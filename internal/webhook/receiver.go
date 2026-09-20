@@ -77,8 +77,12 @@ type Receiver struct {
 	opts Options
 	log  *slog.Logger
 
-	mu        sync.RWMutex
-	verifiers map[string]*Verifier // by account name
+	mu sync.RWMutex
+	// verifiers is keyed by account name, and each entry carries that name
+	// again. verify returns the stored copy rather than the caller's string,
+	// so the name that reaches the rest of the receiver (and the log) is
+	// always one Register was given, never one a request supplied.
+	verifiers map[string]registered
 	syncers   map[string]Syncer
 
 	// noticeMu serialises filing delivery notices. Resend retries an event it
@@ -99,9 +103,16 @@ func New(opts Options) *Receiver {
 	return &Receiver{
 		opts:      opts,
 		log:       opts.Logger,
-		verifiers: map[string]*Verifier{},
+		verifiers: map[string]registered{},
 		syncers:   map[string]Syncer{},
 	}
+}
+
+// registered pairs an account's verifier with the account name Ferry knows it
+// by, so that name can be returned instead of whatever a request asked for.
+type registered struct {
+	name     string
+	verifier *Verifier
 }
 
 // Register enables webhooks for an account. Without a signing secret the
@@ -113,7 +124,7 @@ func (r *Receiver) Register(account, signingSecret string, syncer Syncer) error 
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.verifiers[account] = v
+	r.verifiers[account] = registered{name: account, verifier: v}
 	if syncer != nil {
 		r.syncers[account] = syncer
 	}
@@ -133,8 +144,8 @@ func (r *Receiver) Accounts() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	out := make([]string, 0, len(r.verifiers))
-	for name := range r.verifiers {
-		out = append(out, name)
+	for _, reg := range r.verifiers {
+		out = append(out, reg.name)
 	}
 	return out
 }
@@ -217,24 +228,24 @@ func (r *Receiver) verify(account string, h http.Header, body []byte) (string, e
 	defer r.mu.RUnlock()
 
 	if account != "" {
-		v, ok := r.verifiers[account]
+		reg, ok := r.verifiers[account]
 		if !ok {
 			return "", errUnknownAccount
 		}
-		if err := v.Verify(h, body); err != nil {
+		if err := reg.verifier.Verify(h, body); err != nil {
 			return "", err
 		}
-		return account, nil
+		return reg.name, nil
 	}
 
 	if len(r.verifiers) == 0 {
 		return "", errUnknownAccount
 	}
 	var lastErr error
-	for name, v := range r.verifiers {
-		err := v.Verify(h, body)
+	for _, reg := range r.verifiers {
+		err := reg.verifier.Verify(h, body)
 		if err == nil {
-			return name, nil
+			return reg.name, nil
 		}
 		lastErr = err
 	}
