@@ -28,7 +28,12 @@ import (
 // closest thing to running a real mail client against it that can be
 // automated.
 
-const apiKey = "re_test_key"
+const (
+	apiKey = "re_test_key"
+	// A name no real installation would use, so a test that escaped its
+	// sandbox could not collide with someone's actual account.
+	testAccount = "ferry-e2e-fixture"
+)
 
 type harness struct {
 	t       *testing.T
@@ -90,11 +95,24 @@ func newHarness(t *testing.T) *harness {
 	}
 }
 
+// env is the environment every ferry subprocess runs with.
+//
+// FERRY_SECRET_STORE=file is not optional. The OS credential store is
+// machine-global and keyed by service name alone, so without it these tests
+// would overwrite and then delete the real user's Resend API key, which is
+// exactly what happened once.
+func (h *harness) env() []string {
+	return append(os.Environ(),
+		"FERRY_RESEND_BASE_URL="+h.api.URL,
+		"FERRY_SECRET_STORE=file",
+	)
+}
+
 // run executes a ferry subcommand and returns its combined output.
 func (h *harness) run(args ...string) (string, error) {
 	h.t.Helper()
 	cmd := exec.Command(h.bin, append([]string{"--data-dir", h.dataDir}, args...)...)
-	cmd.Env = append(os.Environ(), "FERRY_RESEND_BASE_URL="+h.api.URL)
+	cmd.Env = h.env()
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -125,7 +143,7 @@ func (h *harness) startDaemon() {
 	cmd := exec.Command(h.bin,
 		"--data-dir", h.dataDir, "--log-level", "debug",
 		"serve", "--imap-addr", h.imap, "--smtp-addr", h.smtp)
-	cmd.Env = append(os.Environ(), "FERRY_RESEND_BASE_URL="+h.api.URL)
+	cmd.Env = h.env()
 	cmd.Stdout = h.logs
 	cmd.Stderr = h.logs
 	if err := cmd.Start(); err != nil {
@@ -206,14 +224,14 @@ func TestEndToEnd(t *testing.T) {
 	h := newHarness(t)
 
 	h.addReceived("welcome", "the quick brown fox jumps")
-	h.addAccount("mysite")
+	h.addAccount(testAccount)
 	h.startDaemon()
 
 	// The account must sync without being asked.
 	var c *imapclient.Client
 	deadline := time.Now().Add(30 * time.Second)
 	for {
-		c = h.imapClient("mysite")
+		c = h.imapClient(testAccount)
 		sel, err := c.Select("INBOX", nil).Wait()
 		if err != nil {
 			t.Fatalf("select: %v", err)
@@ -261,7 +279,7 @@ func TestEndToEnd(t *testing.T) {
 			t.Fatalf("smtp dial: %v", err)
 		}
 		defer sc.Close()
-		if err := sc.Auth(sasl.NewPlainClient("", "mysite", h.password)); err != nil {
+		if err := sc.Auth(sasl.NewPlainClient("", testAccount, h.password)); err != nil {
 			t.Fatalf("smtp auth: %v", err)
 		}
 		msg := "From: hello@mysite.test\r\nTo: sender@example.test\r\n" +
@@ -284,7 +302,7 @@ func TestEndToEnd(t *testing.T) {
 		}
 
 		// The reply must appear in Sent straight away.
-		sc2 := h.imapClient("mysite")
+		sc2 := h.imapClient(testAccount)
 		sel, err := sc2.Select("Sent", nil).Wait()
 		if err != nil {
 			t.Fatal(err)
@@ -295,7 +313,7 @@ func TestEndToEnd(t *testing.T) {
 	})
 
 	t.Run("delete stays deleted", func(t *testing.T) {
-		dc := h.imapClient("mysite")
+		dc := h.imapClient(testAccount)
 		if _, err := dc.Select("INBOX", nil).Wait(); err != nil {
 			t.Fatal(err)
 		}
@@ -328,7 +346,7 @@ func TestEndToEnd(t *testing.T) {
 		if err := json.Unmarshal([]byte(out), &st); err != nil {
 			t.Fatalf("status is not JSON: %v\n%s", err, out)
 		}
-		if len(st.Accounts) != 1 || st.Accounts[0].Name != "mysite" {
+		if len(st.Accounts) != 1 || st.Accounts[0].Name != testAccount {
 			t.Fatalf("status accounts = %+v", st.Accounts)
 		}
 		if st.IMAPAddr != h.imap {
@@ -341,7 +359,7 @@ func TestEndToEnd(t *testing.T) {
 		if err != nil {
 			t.Fatalf("doctor reported problems: %v\n%s", err, out)
 		}
-		if !strings.Contains(out, "[ok  ] Account mysite") {
+		if !strings.Contains(out, "[ok  ] Account "+testAccount) {
 			t.Errorf("doctor output:\n%s", out)
 		}
 	})
@@ -372,15 +390,15 @@ func TestAccountLifecycle(t *testing.T) {
 		t.Skip("end-to-end test builds the binary")
 	}
 	h := newHarness(t)
-	h.addAccount("mysite")
+	h.addAccount(testAccount)
 
 	out := h.mustRun("account", "list")
-	if !strings.Contains(out, "mysite") || !strings.Contains(out, "mysite.test") {
+	if !strings.Contains(out, testAccount) || !strings.Contains(out, "mysite.test") {
 		t.Fatalf("account list:\n%s", out)
 	}
 
 	// A second account with the same name must be refused.
-	if out, err := h.run("account", "add", "mysite", "--api-key", apiKey); err == nil {
+	if out, err := h.run("account", "add", testAccount, "--api-key", apiKey); err == nil {
 		t.Fatalf("a duplicate account name was accepted:\n%s", out)
 	}
 
@@ -393,13 +411,13 @@ func TestAccountLifecycle(t *testing.T) {
 	}
 
 	old := h.password
-	out = h.mustRun("account", "passwd", "mysite")
+	out = h.mustRun("account", "passwd", testAccount)
 	if strings.Contains(out, old) {
 		t.Error("the old password was printed again instead of a new one")
 	}
 
-	h.mustRun("account", "remove", "mysite", "--force")
-	if out := h.mustRun("account", "list"); strings.Contains(out, "mysite") {
+	h.mustRun("account", "remove", testAccount, "--force")
+	if out := h.mustRun("account", "list"); strings.Contains(out, testAccount) {
 		t.Fatalf("account was not removed:\n%s", out)
 	}
 }

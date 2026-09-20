@@ -144,3 +144,45 @@ func TestDirStore(t *testing.T) {
 func writeFile(path, body string) error {
 	return os.WriteFile(path, []byte(body), 0o600)
 }
+
+// TestStoreOverrideForcesFile guards the isolation the test suite depends on.
+//
+// The OS credential store is machine-global and keyed by service name alone,
+// so a process pointed at a throwaway data directory still reads and writes
+// the real user's secrets. FERRY_SECRET_STORE=file is what stops that, and
+// without it the end-to-end tests once overwrote and then deleted a real
+// Resend API key.
+func TestStoreOverrideForcesFile(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv(secrets.EnvStore, "file")
+
+	s := secrets.Open(dir)
+	if !strings.Contains(s.Describe(), "secrets.json") {
+		t.Fatalf("store = %q, want the file store", s.Describe())
+	}
+	if err := s.Set("api-key.someone", "value"); err != nil {
+		t.Fatal(err)
+	}
+	// It must land on disk, in the directory we chose, and nowhere else.
+	if _, err := os.Stat(filepath.Join(dir, "secrets.json")); err != nil {
+		t.Fatalf("the secret did not land in the data directory: %v", err)
+	}
+}
+
+func TestStoreOverrideForcesKeyring(t *testing.T) {
+	t.Setenv(secrets.EnvStore, "keyring")
+	s := secrets.Open(t.TempDir())
+	if !strings.Contains(s.Describe(), "keyring") {
+		t.Fatalf("store = %q, want the OS keyring", s.Describe())
+	}
+}
+
+func TestStoreDefaultIsAutomatic(t *testing.T) {
+	t.Setenv(secrets.EnvStore, "")
+	s := secrets.Open(t.TempDir())
+	// Either backend is a correct answer; what matters is that it picked one
+	// and reports it, so `ferry doctor` can tell the user where secrets live.
+	if d := s.Describe(); !strings.Contains(d, "keyring") && !strings.Contains(d, "secrets.json") {
+		t.Fatalf("store = %q", d)
+	}
+}
