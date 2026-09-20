@@ -352,3 +352,33 @@ func TestVerifierRejectsEmptySecret(t *testing.T) {
 		t.Fatal("an empty signing secret was accepted")
 	}
 }
+
+func TestHostileInputDoesNotReachTheLogUnbounded(t *testing.T) {
+	f := newFixture(t)
+
+	// Anything from the request reaches the log before a signature has been
+	// verified, so a caller must not be able to write arbitrary bytes into it.
+	hostile := "/webhooks/resend/" + strings.Repeat("a", 500) + "%0aFAKE-LOG-LINE"
+	resp := f.post(t, hostile, receivedEvent(), nil)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", resp.StatusCode)
+	}
+	if f.syncer.count() != 0 {
+		t.Fatal("an unverified request caused a sync")
+	}
+}
+
+func TestHostileEventTypeIsHandled(t *testing.T) {
+	f := newFixture(t)
+	event := receivedEvent()
+	event["type"] = strings.Repeat("x", 5000) + "\n\rinjected"
+
+	resp := f.post(t, "/webhooks/resend", event, nil)
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d", resp.StatusCode)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if n := len(f.inbox(t)); n != 0 {
+		t.Fatalf("an unknown event type produced %d messages", n)
+	}
+}

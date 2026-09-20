@@ -169,7 +169,13 @@ func (r *Receiver) serve(w http.ResponseWriter, req *http.Request) {
 		// The reason is logged but never returned: an attacker probing the
 		// endpoint learns nothing about which accounts exist or why a
 		// signature failed.
-		r.log.Warn("rejected webhook", "path", req.URL.Path, "error", err)
+		//
+		// Anything from the request is attacker-controlled and reaches the
+		// log before a signature has been checked, so it is bounded and
+		// stripped of control characters on the way in. slog escapes its
+		// values already; this makes the log readable rather than a wall of
+		// quoted bytes, and keeps an unbounded path out of it entirely.
+		r.log.Warn("rejected webhook", "account", safeLabel(account), "error", err)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -230,7 +236,9 @@ func (r *Receiver) verify(account string, h http.Header, body []byte) (string, e
 }
 
 func (r *Receiver) handle(ctx context.Context, account string, event *Event) {
-	log := r.log.With("account", account, "event", event.Type)
+	// The account name is one Ferry registered, but the event type comes
+	// straight out of the payload and is bounded before it is logged.
+	log := r.log.With("account", account, "event", safeLabel(event.Type))
 
 	switch event.Type {
 	case TypeReceived:
@@ -325,8 +333,30 @@ func (r *Receiver) fileNotice(ctx context.Context, account string, event *Event)
 	if r.opts.Notifier != nil {
 		r.opts.Notifier(account, mbox.ID)
 	}
-	r.log.Info("filed delivery notice", "account", account, "event", event.Type, "email_id", data.ID)
+	r.log.Info("filed delivery notice",
+		"account", account, "event", safeLabel(event.Type), "email_id", safeLabel(data.ID))
 	return nil
+}
+
+// safeLabel bounds a value that came from outside before it reaches a log or
+// an error message. slog escapes control characters on its own, so this is
+// about length and legibility rather than about forging log lines: an
+// unbounded field would let anyone who can reach the endpoint fill the log.
+func safeLabel(v string) string {
+	const maxLen = 64
+	v = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, v)
+	if len(v) > maxLen {
+		return v[:maxLen] + "…"
+	}
+	if v == "" {
+		return "(none)"
+	}
+	return v
 }
 
 func noticeMessageID(eventType, emailID string) string {
