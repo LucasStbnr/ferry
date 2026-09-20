@@ -1,0 +1,14 @@
+# Release image. GoReleaser has already produced the binary for the target
+# architecture, so this only packages it.
+FROM gcr.io/distroless/static-debian12:nonroot
+
+COPY ferry /usr/local/bin/ferry
+
+ENV FERRY_DATA_DIR=/data
+VOLUME ["/data"]
+EXPOSE 9993 9465 8443
+
+USER nonroot:nonroot
+
+ENTRYPOINT ["/usr/local/bin/ferry"]
+CMD ["serve"]

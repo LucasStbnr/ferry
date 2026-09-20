@@ -1,0 +1,180 @@
+# GoReleaser builds the binaries, the container images and the Homebrew
+# formula for a tagged release. Run `make snapshot` to exercise it locally
+# without publishing anything.
+version: 2
+
+project_name: ferry
+
+before:
+  hooks:
+    - go mod tidy
+    - go mod verify
+
+builds:
+  - id: ferry
+    main: ./cmd/ferry
+    binary: ferry
+    env:
+      # The SQLite driver is pure Go, so no C toolchain is needed and every
+      # target cross-compiles from one machine.
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/LucasStbnr/ferry/internal/cli.version={{ .Version }}
+      - -X github.com/LucasStbnr/ferry/internal/cli.commit={{ .ShortCommit }}
+      - -X github.com/LucasStbnr/ferry/internal/cli.date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"   # reproducible archives
+
+archives:
+  - id: ferry
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - README.md
+      - LICENSE
+      - CHANGELOG.md
+      - src: docs/*.md
+        dst: docs
+
+checksum:
+  name_template: checksums.txt
+
+sboms:
+  - artifacts: archive
+
+signs:
+  # Keyless signing through Sigstore: the signature is verifiable against the
+  # GitHub Actions identity that produced it, with no key to manage.
+  - cmd: cosign
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+# One entry builds and pushes every platform, and the manifest with it.
+dockers_v2:
+  - id: ferry
+    images:
+      - ghcr.io/lucasstbnr/ferry
+    tags:
+      - "{{ .Version }}"
+      - "{{ .Major }}.{{ .Minor }}"
+      - latest
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    dockerfile: Dockerfile.release
+    labels:
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.description: IMAP and SMTP bridge for Resend
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .Date }}"
+      org.opencontainers.image.source: https://github.com/LucasStbnr/ferry
+      org.opencontainers.image.licenses: MIT
+
+# Ferry is published as a Homebrew *formula*, not a cask, even though
+# GoReleaser now marks `brews` deprecated in favour of `homebrew_casks`.
+#
+# The reason is `brew services`. A formula's `service do` block registers a
+# launchd agent, which is how `brew services start ferry` works. A cask's
+# `service` stanza is something else entirely: it installs a macOS Services
+# menu item, and casks have no launchd integration at all. Running as a
+# background service is the normal way to use Ferry, so the deprecation is
+# accepted knowingly until casks gain an equivalent.
+#
+# `goreleaser check` therefore reports a deprecation warning. `goreleaser
+# release` is unaffected.
+brews:
+  - name: ferry
+    repository:
+      owner: LucasStbnr
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: https://github.com/LucasStbnr/ferry
+    description: IMAP and SMTP bridge that puts Resend accounts into Apple Mail
+    license: MIT
+    commit_author:
+      name: goreleaser
+      email: noreply@github.com
+
+    service: |
+      run [opt_bin/"ferry", "serve"]
+      keep_alive true
+      working_dir var
+      log_path var/"log/ferry.log"
+      error_log_path var/"log/ferry.log"
+
+    test: |
+      assert_match "ferry", shell_output("#{bin}/ferry version")
+
+    caveats: |
+      Ferry runs as a local service and speaks IMAP and SMTP over TLS on
+      loopback only.
+
+      Getting started:
+
+        ferry account add mysite      add a Resend account; the app password
+                                      is printed once
+        ferry trust                   trust Ferry's local certificate so Mail
+                                      connects without a warning
+        ferry mail-profile --open     configure Apple Mail in one double-click
+        brew services start ferry     run it in the background
+
+      Mail is stored under
+        ~/Library/Application Support/ferry
+
+      That directory is the only copy of your read state, folders and drafts:
+      Resend does not store them. Back it up, and keep FileVault on.
+
+release:
+  draft: false
+  prerelease: auto
+  footer: |
+    ## Install
+
+    Homebrew:
+
+        brew install LucasStbnr/tap/ferry
+
+    Docker:
+
+        docker pull ghcr.io/lucasstbnr/ferry:{{ .Version }}
+
+    **Full changelog**: https://github.com/LucasStbnr/ferry/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+changelog:
+  use: github
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Performance
+      regexp: '^.*?perf(\(.+\))??!?:.+$'
+      order: 2
+    - title: Other
+      order: 99
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+      - Merge pull request
+      - Merge branch

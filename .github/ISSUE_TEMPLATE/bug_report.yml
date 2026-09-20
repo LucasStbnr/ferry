@@ -1,0 +1,54 @@
+name: Bug report
+description: Something in Ferry does not work as described
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please do not include a real Resend API key, a
+        real app password, or the contents of real mail.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: ferry doctor
+      description: The output of `ferry doctor`. It redacts nothing sensitive, but check it over before pasting.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Ferry version
+      description: The output of `ferry version`.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: client
+    attributes:
+      label: Mail client
+      options:
+        - Apple Mail (macOS)
+        - Apple Mail (iOS)
+        - Thunderbird
+        - Other
+        - Not applicable
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: From `ferry serve --log-level debug`, or `brew services` logs.
+      render: text
