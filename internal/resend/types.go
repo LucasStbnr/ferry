@@ -2,7 +2,6 @@ package resend
 
 import (
 	"encoding/json"
-	"time"
 )
 
 // Domain is a Resend sending/receiving domain.
@@ -36,7 +35,7 @@ type Summary struct {
 	Bcc         Addrs      `json:"bcc"`
 	Subject     string     `json:"subject"`
 	MessageID   string     `json:"message_id"`
-	CreatedAt   time.Time  `json:"created_at"`
+	CreatedAt   Time       `json:"created_at"`
 	Attachments []Attached `json:"attachments"`
 }
 
@@ -52,8 +51,8 @@ type Attached struct {
 
 // Raw points at the original RFC 5322 message. The URL is signed and expires.
 type Raw struct {
-	DownloadURL string    `json:"download_url"`
-	ExpiresAt   time.Time `json:"expires_at"`
+	DownloadURL string `json:"download_url"`
+	ExpiresAt   Time   `json:"expires_at"`
 }
 
 // Email is a full received or sent message.
@@ -71,7 +70,7 @@ type Email struct {
 	HTMLFormat  string            `json:"html_format"`
 	Text        string            `json:"text"`
 	Headers     map[string]string `json:"headers"`
-	CreatedAt   time.Time         `json:"created_at"`
+	CreatedAt   Time              `json:"created_at"`
 	Raw         *Raw              `json:"raw"`
 	Attachments []Attached        `json:"attachments"`
 }
@@ -79,8 +78,8 @@ type Email struct {
 // AttachmentInfo is a single attachment with its temporary download URL.
 type AttachmentInfo struct {
 	Attached
-	DownloadURL string    `json:"download_url"`
-	ExpiresAt   time.Time `json:"expires_at"`
+	DownloadURL string `json:"download_url"`
+	ExpiresAt   Time   `json:"expires_at"`
 }
 
 // Page is one page of a cursor-paginated listing, newest first.

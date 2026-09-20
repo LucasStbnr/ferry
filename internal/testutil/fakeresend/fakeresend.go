@@ -137,7 +137,7 @@ func (s *Server) AddReceived(m *Mail) *Mail {
 		m.ID = s.newID("rcv")
 	}
 	if m.CreatedAt.IsZero() {
-		m.CreatedAt = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(len(s.received)) * time.Minute)
+		m.CreatedAt = resend.Time{Time: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(len(s.received)) * time.Minute)}
 	}
 	s.received = append([]*Mail{m}, s.received...)
 	return m
@@ -151,7 +151,7 @@ func (s *Server) AddSent(m *Mail) *Mail {
 		m.ID = s.newID("snt")
 	}
 	if m.CreatedAt.IsZero() {
-		m.CreatedAt = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(len(s.sent)) * time.Minute)
+		m.CreatedAt = resend.Time{Time: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC).Add(time.Duration(len(s.sent)) * time.Minute)}
 	}
 	s.sent = append([]*Mail{m}, s.sent...)
 	return m
@@ -288,7 +288,7 @@ func (s *Server) get(w http.ResponseWriter, rest string, all []*Mail, received b
 	}
 	e := m.Email
 	if received && m.RawMIME != nil {
-		e.Raw = &resend.Raw{DownloadURL: s.URL + "/download/raw/" + m.ID, ExpiresAt: time.Now().Add(time.Hour)}
+		e.Raw = &resend.Raw{DownloadURL: s.URL + "/download/raw/" + m.ID, ExpiresAt: resend.Time{Time: time.Now().Add(time.Hour)}}
 	} else {
 		e.Raw = nil
 	}

@@ -459,9 +459,9 @@ func (s *Syncer) storeOne(ctx context.Context, dir direction, mailboxID int64, s
 		}
 	}
 
-	internalDate := email.CreatedAt
+	internalDate := email.CreatedAt.Time
 	if internalDate.IsZero() {
-		internalDate = sum.CreatedAt
+		internalDate = sum.CreatedAt.Time
 	}
 	if internalDate.IsZero() {
 		internalDate = s.opts.Clock()
@@ -520,7 +520,7 @@ func (s *Syncer) materialise(ctx context.Context, dir direction, email *resend.E
 		To:          email.To,
 		Cc:          email.Cc,
 		Subject:     email.Subject,
-		Date:        email.CreatedAt,
+		Date:        email.CreatedAt.Time,
 		Text:        email.Text,
 		HTML:        email.HTML,
 		Headers:     email.Headers,
