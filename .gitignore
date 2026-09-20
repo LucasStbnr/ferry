@@ -1,0 +1,22 @@
+# Build output
+/ferry
+/dist/
+*.test
+*.out
+
+# Local state that must never be committed: it holds mail, API keys and
+# private keys.
+/data/
+*.db
+*.db-wal
+*.db-shm
+*.eml
+*.mobileconfig
+secrets.json
+tls/
+
+# Editor and OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp

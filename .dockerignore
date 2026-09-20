@@ -1,0 +1,12 @@
+.git
+.github
+dist
+docs
+*.md
+!README.md
+Formula
+.golangci.yml
+.goreleaser.yaml
+Makefile
+coverage.out
+ferry

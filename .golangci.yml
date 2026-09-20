@@ -1,0 +1,94 @@
+# Linting for Ferry. The selection favours correctness and readability over
+# style points: a bridge that silently drops mail is the failure mode worth
+# catching, so unchecked errors and lost context are the priority.
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck        # an ignored error here means a lost message
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose       # a leaked response body starves a long-running daemon
+    - contextcheck
+    - copyloopvar
+    - durationcheck
+    - errorlint       # errors.Is/As, so error classification keeps working
+    - gocritic
+    - misspell
+    - nilerr
+    - noctx
+    - prealloc
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - unconvert
+    - unparam
+    - wastedassign
+    - whitespace
+
+  settings:
+    errcheck:
+      # Deliberate best-effort cleanups are written as `_ = f()`.
+      check-blank: false
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment   # readability wins over a few bytes per struct
+        - shadow
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: indent-error-flow
+        - name: errorf
+        - name: context-as-argument
+        - name: error-strings
+        - name: increment-decrement
+        - name: var-declaration
+    staticcheck:
+      checks:
+        - all
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - opinionated
+      disabled-checks:
+        - ifElseChain    # explicit chains read better than forced switches
+
+  exclusions:
+    rules:
+      # Tests trade some rigour for readability: fixtures are noisy enough
+      # without checking every cleanup call. bodyclose in particular cannot
+      # see a body closed from t.Cleanup, which is how the helpers do it.
+      - path: _test\.go
+        linters:
+          - errcheck
+          - noctx
+          - unparam
+          - gocritic
+          - bodyclose
+
+      # contextcheck follows every cobra RunE closure down into the OS keyring,
+      # whose API takes no context at all, and reports a context that cannot be
+      # passed. The commands themselves do use cmd.Context() throughout.
+      - path: internal/cli/
+        linters:
+          - contextcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/LucasStbnr/ferry
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
