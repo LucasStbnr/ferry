@@ -364,12 +364,22 @@ func rejectionReason(err error) string {
 	}
 }
 
-// eventLabel reduces an event type from the payload to a known constant, so
-// only strings from this file are ever logged.
+// eventLabel reduces an event type from the payload to a known constant.
+//
+// Each branch returns the constant itself rather than the argument. Returning
+// the argument would be equivalent, but only to a reader who checks that the
+// case guards it. This way nothing from the payload reaches the caller at
+// all, which is the property worth having and the one a scanner can confirm.
 func eventLabel(t string) string {
 	switch t {
-	case TypeReceived, TypeBounced, TypeComplained, TypeDelivered:
-		return t
+	case TypeReceived:
+		return TypeReceived
+	case TypeBounced:
+		return TypeBounced
+	case TypeComplained:
+		return TypeComplained
+	case TypeDelivered:
+		return TypeDelivered
 	default:
 		return "other"
 	}
