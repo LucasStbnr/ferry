@@ -99,7 +99,7 @@ func printStatus(e *env, s *control.Status, running bool) {
 			e.printf("Webhooks   %s\n", s.Webhook)
 		}
 	} else {
-		e.printf("Daemon     not running (start it with `ferry serve`, or `brew services start ferry`)\n")
+		e.printf("Daemon     not running; %s\n", serviceHint())
 	}
 	e.printf("Data       %s\n\n", e.cfg.Dir)
 

@@ -10,7 +10,7 @@ import (
 //
 // `ferry serve` accepts --imap-addr and --smtp-addr, so the running daemon can
 // be listening somewhere config.json does not mention. Commands that connect
-// to it, or that tell Apple Mail where to connect, must use the live values or
+// to it, or that tell a mail client where to connect, must use the live values or
 // they will confidently point at the wrong port. When no daemon is running the
 // configuration is the best answer available.
 func (e *env) effectiveAddrs(ctx context.Context) (imapAddr, smtpAddr string) {

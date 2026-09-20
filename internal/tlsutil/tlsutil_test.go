@@ -73,7 +73,7 @@ func TestNewHostnameReissuesTheLeaf(t *testing.T) {
 
 // TestHandshake is the check that matters: a client that trusts the CA must be
 // able to complete a TLS handshake against the server config, for localhost
-// and for 127.0.0.1, because Apple Mail may use either.
+// and for 127.0.0.1, because a client may be configured with either.
 func TestHandshake(t *testing.T) {
 	bundle, err := tlsutil.EnsureBundle(filepath.Join(t.TempDir(), "tls"), nil)
 	if err != nil {

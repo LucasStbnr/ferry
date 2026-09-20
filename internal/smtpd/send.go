@@ -1,11 +1,11 @@
-// Package smtpd accepts mail from Apple Mail and hands it to Resend.
+// Package smtpd accepts mail from a mail client and hands it to Resend.
 //
 // Submission is synchronous: the SMTP transaction does not succeed until
 // Resend has accepted the message. That is deliberate. A queue behind the
 // bridge would mean Mail shows a message as sent while it is still in limbo,
 // and the user would have no way to see or retry it. Returning the real error
-// on the SMTP transaction puts the failure where Mail already knows how to
-// show it: the Outbox.
+// on the SMTP transaction puts the failure where the client already knows how
+// to show it: the outbox.
 package smtpd
 
 import (

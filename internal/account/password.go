@@ -1,5 +1,5 @@
 // Package account is the lifecycle of a Ferry account: creating one from a
-// Resend API key, generating the app password Apple Mail logs in with, and
+// Resend API key, generating the app password a mail client logs in with, and
 // authenticating IMAP and SMTP sessions against it.
 package account
 
@@ -18,7 +18,7 @@ import (
 const bcryptCost = 12
 
 // appPasswordAlphabet excludes characters that are easy to misread when the
-// password is typed into Apple Mail by hand.
+// password is typed into a client by hand.
 const appPasswordAlphabet = "abcdefghijkmnopqrstuvwxyz23456789"
 
 // appPasswordGroups and appPasswordGroupLen give a 20-character password in

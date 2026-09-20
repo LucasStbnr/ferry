@@ -70,7 +70,7 @@ func Build(opts Options) ([]byte, error) {
 		opts.Organization = "Ferry"
 	}
 	if opts.Description == "" {
-		opts.Description = "Configures Apple Mail to use the Ferry bridge for Resend mail."
+		opts.Description = "Configures Apple Mail to read this Resend account through Ferry."
 	}
 
 	var payloads []dict

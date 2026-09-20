@@ -4,9 +4,9 @@
 // Two directions matter. Inbound, Resend sometimes offers the original raw
 // message and sometimes only html/text plus headers; when the raw is missing
 // or its signed URL has expired, Build synthesises a faithful message so that
-// Apple Mail always has something complete to render. Outbound, Mail submits
-// real MIME over SMTP and ParseSubmission reduces it to the fields Resend's
-// send API accepts.
+// a client always has something complete to render. Outbound, the client
+// submits real MIME over SMTP and ParseSubmission reduces it to the fields
+// Resend's send API accepts.
 package mailmime
 
 import (

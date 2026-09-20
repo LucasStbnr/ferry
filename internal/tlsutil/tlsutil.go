@@ -115,8 +115,8 @@ func (b *Bundle) ServerConfig() (*tls.Config, error) {
 }
 
 // ClientConfig returns a configuration that trusts this bundle's CA. It is
-// what `ferry doctor` and the tests connect with; Apple Mail instead trusts
-// the CA through the keychain.
+// what `ferry doctor` and the tests connect with; a mail client instead
+// trusts the CA through the system trust store.
 func (b *Bundle) ClientConfig() (*tls.Config, error) {
 	pool := x509.NewCertPool()
 	if len(b.CACertPEM) > 0 {

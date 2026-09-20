@@ -26,6 +26,12 @@ RUN go build -trimpath \
         -X github.com/LucasStbnr/ferry/internal/cli.date=${DATE}" \
       -o /out/ferry ./cmd/ferry
 
+# The data directory has to exist in the image, owned by the user Ferry runs
+# as: Docker seeds a fresh named or anonymous volume from the image path, and
+# a path that is not there is created root-owned, which nonroot cannot write.
+# Distroless has no shell, so the directory is made here and copied over.
+RUN mkdir -p /out/root/data && chmod 700 /out/root/data
+
 FROM gcr.io/distroless/static-debian12:nonroot
 
 LABEL org.opencontainers.image.title="ferry" \
@@ -36,7 +42,11 @@ LABEL org.opencontainers.image.title="ferry" \
 COPY --from=build /out/ferry /usr/local/bin/ferry
 
 # All state lives here: the database, the message blobs and the certificate.
-# Mount a volume, or the mail disappears when the container is replaced.
+# Mount a volume, or the mail disappears when the container is replaced. The
+# directory is shipped 0700 and owned by nonroot (65532) so a fresh volume
+# inherits both; the numeric id is used because COPY --chown resolves names
+# against the target image, and distroless carries no shell to fix it later.
+COPY --from=build --chown=65532:65532 /out/root/ /
 ENV FERRY_DATA_DIR=/data
 VOLUME ["/data"]
 

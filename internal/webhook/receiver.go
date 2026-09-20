@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -48,6 +49,10 @@ const (
 	TypeComplained = "email.complained"
 	TypeDelivered  = "email.delivered"
 )
+
+// errUnknownAccount is returned when a request names, or matches, no account
+// that has webhooks enabled.
+var errUnknownAccount = errors.New("webhook: no account matched")
 
 // Syncer is the part of the sync engine the receiver needs: a way to ask for
 // an immediate poll.
@@ -166,16 +171,17 @@ func (r *Receiver) serve(w http.ResponseWriter, req *http.Request) {
 	account := r.routeAccount(req.URL.Path)
 	verified, err := r.verify(account, req.Header, body)
 	if err != nil {
-		// The reason is logged but never returned: an attacker probing the
-		// endpoint learns nothing about which accounts exist or why a
-		// signature failed.
+		// Nothing from the request reaches the log. This runs before any
+		// signature has been checked, so the path, the headers and the body
+		// are all attacker-controlled, and the error built from them carries
+		// header bytes with it. Only rejectionReason's fixed strings are
+		// logged, which makes it structurally impossible to write chosen
+		// bytes into the log or to flood it from outside.
 		//
-		// Anything from the request is attacker-controlled and reaches the
-		// log before a signature has been checked, so it is bounded and
-		// stripped of control characters on the way in. slog escapes its
-		// values already; this makes the log readable rather than a wall of
-		// quoted bytes, and keeps an unbounded path out of it entirely.
-		r.log.Warn("rejected webhook", "account", safeLabel(account), "error", err)
+		// The reason is never returned to the caller either: someone probing
+		// the endpoint learns nothing about which accounts exist or why a
+		// signature failed.
+		r.log.Warn("rejected webhook", "reason", rejectionReason(err))
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -213,7 +219,7 @@ func (r *Receiver) verify(account string, h http.Header, body []byte) (string, e
 	if account != "" {
 		v, ok := r.verifiers[account]
 		if !ok {
-			return "", fmt.Errorf("webhook: no signing secret for account %q", account)
+			return "", errUnknownAccount
 		}
 		if err := v.Verify(h, body); err != nil {
 			return "", err
@@ -222,7 +228,7 @@ func (r *Receiver) verify(account string, h http.Header, body []byte) (string, e
 	}
 
 	if len(r.verifiers) == 0 {
-		return "", errors.New("webhook: no accounts have webhooks enabled")
+		return "", errUnknownAccount
 	}
 	var lastErr error
 	for name, v := range r.verifiers {
@@ -236,9 +242,9 @@ func (r *Receiver) verify(account string, h http.Header, body []byte) (string, e
 }
 
 func (r *Receiver) handle(ctx context.Context, account string, event *Event) {
-	// The account name is one Ferry registered, but the event type comes
-	// straight out of the payload and is bounded before it is logged.
-	log := r.log.With("account", account, "event", safeLabel(event.Type))
+	// account is a name Ferry registered, so it is ours. The event type comes
+	// out of the payload, so it is reduced to one of the known constants.
+	log := r.log.With("account", account, "event", eventLabel(event.Type))
 
 	switch event.Type {
 	case TypeReceived:
@@ -334,29 +340,51 @@ func (r *Receiver) fileNotice(ctx context.Context, account string, event *Event)
 		r.opts.Notifier(account, mbox.ID)
 	}
 	r.log.Info("filed delivery notice",
-		"account", account, "event", safeLabel(event.Type), "email_id", safeLabel(data.ID))
+		"account", account, "event", eventLabel(event.Type), "email_id", safeID(data.ID))
 	return nil
 }
 
-// safeLabel bounds a value that came from outside before it reaches a log or
-// an error message. slog escapes control characters on its own, so this is
-// about length and legibility rather than about forging log lines: an
-// unbounded field would let anyone who can reach the endpoint fill the log.
-func safeLabel(v string) string {
-	const maxLen = 64
-	v = strings.Map(func(r rune) rune {
-		if r < 0x20 || r == 0x7f {
-			return -1
-		}
-		return r
-	}, v)
-	if len(v) > maxLen {
-		return v[:maxLen] + "…"
+// rejectionReason maps a verification failure onto one of a fixed set of
+// strings. The error itself is built from request headers, so returning it to
+// the logger would put attacker-chosen bytes there; a closed set cannot.
+func rejectionReason(err error) string {
+	switch {
+	case errors.Is(err, ErrNoSignature):
+		return "no signature headers"
+	case errors.Is(err, ErrStaleRequest):
+		return "timestamp outside the tolerance window"
+	case errors.Is(err, ErrBadSignature):
+		return "signature did not match"
+	case errors.Is(err, ErrMalformedHead):
+		return "malformed signature headers"
+	case errors.Is(err, errUnknownAccount):
+		return "no account with a signing secret matched"
+	default:
+		return "verification failed"
 	}
-	if v == "" {
-		return "(none)"
+}
+
+// eventLabel reduces an event type from the payload to a known constant, so
+// only strings from this file are ever logged.
+func eventLabel(t string) string {
+	switch t {
+	case TypeReceived, TypeBounced, TypeComplained, TypeDelivered:
+		return t
+	default:
+		return "other"
 	}
-	return v
+}
+
+// safeIDPattern is what a Resend identifier looks like. An id that does not
+// match is replaced rather than logged, so the log holds either a real
+// identifier or a marker, never arbitrary bytes.
+var safeIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+
+func safeID(id string) string {
+	if safeIDPattern.MatchString(id) {
+		return id
+	}
+	return "(invalid)"
 }
 
 func noticeMessageID(eventType, emailID string) string {

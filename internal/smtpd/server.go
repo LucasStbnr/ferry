@@ -151,8 +151,8 @@ var (
 	_ smtp.AuthSession = (*session)(nil)
 )
 
-// AuthMechanisms advertises the mechanisms Apple Mail offers. Both send the
-// password, which is why the connection is TLS from the first byte.
+// AuthMechanisms advertises what clients may use. Both send the password in
+// the clear, which is why the connection is TLS from the first byte.
 func (s *session) AuthMechanisms() []string {
 	return []string{sasl.Plain, sasl.Login}
 }

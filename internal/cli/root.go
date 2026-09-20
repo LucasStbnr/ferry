@@ -51,21 +51,24 @@ func Execute(ctx context.Context) error {
 
 	root := &cobra.Command{
 		Use:   "ferry",
-		Short: "Bridge a Resend account into Apple Mail over IMAP and SMTP",
-		Long: `Ferry exposes each Resend account as a local IMAP and SMTP server, so
-Apple Mail, or any mail client, can read, search, reply to and send mail
-that Resend would otherwise only show in its dashboard.
+		Short: "Serve a Resend account over IMAP and SMTP, for any mail client",
+		Long: `Ferry exposes each Resend account as a local IMAP and SMTP server, so any
+mail client can read, search, reply to and send mail that Resend would
+otherwise only show in its dashboard.
 
 Everything Resend does not model is kept locally: read state, folders, drafts
-and deletions. Deleting a message in Mail removes it here and records a
+and deletions. Deleting a message in your client removes it here and records a
 tombstone; Resend's own copy is never touched.
 
 Getting started:
 
   ferry account add mysite     add a Resend account and print its app password
-  ferry trust                  tell macOS to trust Ferry's local certificate
-  ferry mail-profile           write a profile that configures Apple Mail
-  ferry serve                  run the daemon in the foreground`,
+  ferry trust                  trust Ferry's local certificate (macOS, Linux)
+  ferry service install        run Ferry in the background from now on
+
+Point any mail client at the host, ports and credentials that
+` + "`ferry account add`" + ` prints. On macOS, ` + "`ferry mail-profile`" + ` writes a profile
+that configures Apple Mail in one double-click.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		CompletionOptions: cobra.CompletionOptions{
@@ -80,6 +83,7 @@ Getting started:
 
 	root.AddCommand(
 		newServeCmd(e),
+		newServiceCmd(e),
 		newAccountCmd(e),
 		newSyncCmd(e),
 		newStatusCmd(e),

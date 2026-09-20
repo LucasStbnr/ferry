@@ -164,7 +164,7 @@ func TestCapabilitiesAppleMailNeeds(t *testing.T) {
 	c := f.dial(t, "acct")
 
 	caps := c.Caps()
-	// Without these Apple Mail falls back to slow or wrong behaviour: guessing
+	// Without these, clients fall back to slow or wrong behaviour: guessing
 	// folder roles by name, re-downloading on every move, polling instead of
 	// idling.
 	for _, want := range []imap.Cap{

@@ -24,7 +24,7 @@ func newMailProfileCmd(e *env) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "mail-profile [account...]",
-		Short: "Write an Apple Mail configuration profile for the accounts",
+		Short: "Write an Apple configuration profile (macOS and iOS only)",
 		Long: `Writes a .mobileconfig file that sets up Apple Mail for Ferry's accounts:
 the right hostname, both ports, SSL on both, the username, and Ferry's CA
 certificate so there is no certificate warning.

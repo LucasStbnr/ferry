@@ -310,7 +310,7 @@ func (s *Syncer) incremental(ctx context.Context, dir direction, mailboxID int64
 		}
 		if st.NewestID == "" {
 			// First run: take one page here and let the backfill do the rest,
-			// so the user sees recent mail in Apple Mail almost immediately.
+			// so the user sees recent mail in their client almost immediately.
 			break
 		}
 		after = p.Items[len(p.Items)-1].ID

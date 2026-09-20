@@ -1,6 +1,6 @@
 // Package webhook receives Resend's event callbacks, so new mail appears in
-// Apple Mail the moment it arrives instead of at the next poll, and so bounces
-// become something the user can actually see.
+// a mail client the moment it arrives instead of at the next poll, and so
+// bounces become something the user can actually see.
 //
 // Every request must carry a valid Svix signature. An unsigned receiver would
 // let anyone who found the URL inject messages into the user's Inbox, so

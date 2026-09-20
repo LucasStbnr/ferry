@@ -25,7 +25,8 @@ import (
 
 // These tests drive the real ferry binary end to end: add an account, start
 // the daemon, then talk to it with real IMAP and SMTP clients. They are the
-// closest thing to running Apple Mail against it that can be automated.
+// closest thing to running a real mail client against it that can be
+// automated.
 
 const apiKey = "re_test_key"
 
@@ -157,7 +158,7 @@ func (h *harness) startDaemon() {
 	h.t.Fatalf("daemon did not start within 30s; log:\n%s", h.logs.String())
 }
 
-// clientTLS trusts the CA the daemon generated, exactly as Apple Mail does
+// clientTLS trusts the CA the daemon generated, exactly as a mail client does
 // after `ferry trust`.
 func (h *harness) clientTLS() *tls.Config {
 	h.t.Helper()

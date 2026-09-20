@@ -225,7 +225,7 @@ func TestSendRequiresAuthentication(t *testing.T) {
 func TestAuthLoginMechanism(t *testing.T) {
 	f := newFixture(t)
 	c := f.dial(t, false)
-	// Apple Mail offers LOGIN for submission, so it has to work.
+	// Several clients offer LOGIN for submission, so it has to work.
 	if err := c.Auth(sasl.NewLoginClient("acct", appPassword)); err != nil {
 		t.Fatalf("AUTH LOGIN: %v", err)
 	}

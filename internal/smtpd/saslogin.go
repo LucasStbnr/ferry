@@ -7,7 +7,8 @@ import (
 )
 
 // AUTH LOGIN is not in any RFC and go-sasl ships only a client for it, but
-// Apple Mail still offers it for SMTP submission, so Ferry has to answer it.
+// clients still offer it for SMTP submission (Apple Mail and Outlook among
+// them), so Ferry has to answer it.
 // The exchange is two base64 prompts, "Username:" then "Password:", which the
 // SMTP layer encodes for us.
 //

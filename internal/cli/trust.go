@@ -75,7 +75,7 @@ Self-hosting with a real certificate does not need this at all.`,
 			}
 
 			e.printf("Ferry's certificate authority is now trusted in the %s keychain.\n", keychain)
-			e.printf("Apple Mail will connect to %s and %s without a warning.\n", e.cfg.IMAP.Addr, e.cfg.SMTP.Addr)
+			e.printf("Mail clients will connect to %s and %s without a warning.\n", e.cfg.IMAP.Addr, e.cfg.SMTP.Addr)
 			e.printf("\nTo undo this:\n  security delete-certificate -c \"Ferry local CA\"\n")
 			return nil
 		},

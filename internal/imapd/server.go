@@ -79,8 +79,8 @@ func New(opts Options) (*Server, error) {
 	caps := imap.CapSet{
 		imap.CapIMAP4rev1: {},
 		imap.CapIMAP4rev2: {},
-		// IMAP4rev1 clients, which Apple Mail still behaves as, need these
-		// announced explicitly even though IMAP4rev2 subsumes them.
+		// IMAP4rev1 clients (which most still are, Apple Mail included) need
+		// these announced explicitly even though IMAP4rev2 subsumes them.
 		imap.CapNamespace:    {},
 		imap.CapUIDPlus:      {},
 		imap.CapESearch:      {},

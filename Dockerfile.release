@@ -1,11 +1,39 @@
-# Release image. GoReleaser has already produced the binary for the target
-# architecture, so this only packages it.
+# Release image. GoReleaser has already cross-compiled the binary for every
+# target platform, so nothing is built here; the binary is only packaged.
+#
+# dockers_v2 builds one multi-arch image from a context holding a directory per
+# platform, which is what $TARGETPLATFORM selects below.
+
+# A scratch-like base cannot create a directory, so the data directory is
+# staged here. It runs on the build platform rather than under emulation,
+# because making one directory does not need to happen once per architecture.
+FROM --platform=$BUILDPLATFORM busybox:stable AS prep
+RUN mkdir -p /seed/data && chmod 700 /seed/data
+
 FROM gcr.io/distroless/static-debian12:nonroot
 
-COPY ferry /usr/local/bin/ferry
+ARG TARGETPLATFORM
 
+LABEL org.opencontainers.image.title="ferry" \
+      org.opencontainers.image.description="IMAP and SMTP bridge that puts a Resend account into any mail client" \
+      org.opencontainers.image.source="https://github.com/LucasStbnr/ferry" \
+      org.opencontainers.image.licenses="MIT"
+
+COPY $TARGETPLATFORM/ferry /usr/local/bin/ferry
+
+# All state lives here: the database, the message blobs and the certificate.
+# Docker seeds a fresh volume from this path, so it must already exist and be
+# owned by the user Ferry runs as, otherwise the volume is created root-owned
+# and nonroot cannot write to it. The numeric id is used because COPY --chown
+# resolves names against the target image, and distroless has no shell to fix
+# it afterwards.
+COPY --from=prep --chown=65532:65532 /seed/ /
 ENV FERRY_DATA_DIR=/data
 VOLUME ["/data"]
+
+# Self-hosting uses the standard ports. They are above 1024 inside the
+# container so the process never needs to be root; map them with
+# `-p 993:9993 -p 465:9465` if clients expect the usual numbers.
 EXPOSE 9993 9465 8443
 
 USER nonroot:nonroot

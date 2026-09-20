@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"runtime"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -257,7 +256,7 @@ func (e *env) checkDaemon(ctx context.Context) check {
 	if !control.Available(ctx, socket) {
 		c.status = statusWarn
 		c.detail = "not running"
-		c.fix = daemonStartHint()
+		c.fix = serviceHint()
 		return c
 	}
 	st, err := control.Dial(socket).Status(ctx)
@@ -317,11 +316,4 @@ func (e *env) checkListeners(ctx context.Context) []check {
 		checks = append(checks, c)
 	}
 	return checks
-}
-
-func daemonStartHint() string {
-	if runtime.GOOS == "darwin" {
-		return "start it with `brew services start ferry`, or run `ferry serve` in a terminal"
-	}
-	return "run `ferry serve`"
 }

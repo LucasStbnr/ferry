@@ -29,8 +29,8 @@ tombstoned so they cannot be resurrected; changes in that area deserve extra
 care.
 
 **Fail loudly, in words the user can act on.** An SMTP rejection shows up in
-Apple Mail verbatim, so its text is user-facing copy. "Resend's sending quota
-is used up" is useful; "550 error" is not.
+the user's mail client verbatim, so its text is user-facing copy. "Resend's
+sending quota is used up" is useful; "550 error" is not.
 
 **Explain the non-obvious in comments.** Say why, not what. The comment worth
 writing is the one that stops the next person from "simplifying" a subtlety
@@ -62,9 +62,9 @@ Commit messages follow [Conventional Commits](https://www.conventionalcommits.or
 (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`), because the release
 changelog is generated from them.
 
-Before opening a pull request, run `make check`. If your change affects how
-Apple Mail behaves, say what you tested by hand; the automated suite drives a
-real IMAP client, but it is not Mail.
+Before opening a pull request, run `make check`. If your change affects how a
+mail client behaves, say which client you tested by hand and what you tried;
+the automated suite drives a real IMAP client, but it is not a mail program.
 
 ## Reporting a security issue
 

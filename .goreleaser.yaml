@@ -83,55 +83,63 @@ dockers_v2:
       org.opencontainers.image.source: https://github.com/LucasStbnr/ferry
       org.opencontainers.image.licenses: MIT
 
-# Ferry is published as a Homebrew *formula*, not a cask, even though
-# GoReleaser now marks `brews` deprecated in favour of `homebrew_casks`.
-#
-# The reason is `brew services`. A formula's `service do` block registers a
-# launchd agent, which is how `brew services start ferry` works. A cask's
-# `service` stanza is something else entirely: it installs a macOS Services
-# menu item, and casks have no launchd integration at all. Running as a
-# background service is the normal way to use Ferry, so the deprecation is
-# accepted knowingly until casks gain an equivalent.
-#
-# `goreleaser check` therefore reports a deprecation warning. `goreleaser
-# release` is unaffected.
-brews:
+homebrew_casks:
   - name: ferry
+    binaries:
+      - ferry
     repository:
       owner: LucasStbnr
       name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    directory: Formula
+    directory: Casks
     homepage: https://github.com/LucasStbnr/ferry
-    description: IMAP and SMTP bridge that puts Resend accounts into Apple Mail
+    description: IMAP and SMTP bridge that puts a Resend account into any mail client
     license: MIT
     commit_author:
       name: goreleaser
       email: noreply@github.com
 
-    service: |
-      run [opt_bin/"ferry", "serve"]
-      keep_alive true
-      working_dir var
-      log_path var/"log/ferry.log"
-      error_log_path var/"log/ferry.log"
+    hooks:
+      post:
+        # The release binaries are not notarised, so macOS quarantines them and
+        # Gatekeeper refuses to run ferry at all. Clearing the attribute on a
+        # binary Homebrew just downloaded over TLS, whose checksum it verified,
+        # is what every unsigned CLI cask does.
+        install: |
+          if system_command("/usr/bin/xattr", args: ["-h"], print_stderr: false).exit_status.zero?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/ferry"]
+          end
 
-    test: |
-      assert_match "ferry", shell_output("#{bin}/ferry version")
+    # Ferry registers its own LaunchAgent through `ferry service install`, so
+    # uninstalling has to unload it. Homebrew does this before removing the
+    # binary the agent points at.
+    uninstall:
+      launchctl:
+        - io.github.lucasstbnr.ferry
+
+    # `brew uninstall --zap` also removes the mail store. It is not part of a
+    # normal uninstall, because that store is the only copy of the read state,
+    # folders and drafts.
+    zap:
+      trash:
+        - ~/Library/Application Support/ferry
+        - ~/Library/LaunchAgents/io.github.lucasstbnr.ferry.plist
 
     caveats: |
-      Ferry runs as a local service and speaks IMAP and SMTP over TLS on
-      loopback only.
+      Ferry serves IMAP and SMTP over TLS on loopback, for any mail client.
 
       Getting started:
 
         ferry account add mysite      add a Resend account; the app password
                                       is printed once
-        ferry trust                   trust Ferry's local certificate so Mail
-                                      connects without a warning
-        ferry mail-profile --open     configure Apple Mail in one double-click
-        brew services start ferry     run it in the background
+        ferry trust                   trust Ferry's local certificate so mail
+                                      clients connect without a warning
+        ferry service install         run it in the background from now on
+
+      On macOS, `ferry mail-profile --open` configures Apple Mail in one
+      double-click. Any other client is set up by hand against localhost;
+      `ferry account add` prints the ports and credentials.
 
       Mail is stored under
         ~/Library/Application Support/ferry
@@ -147,7 +155,7 @@ release:
 
     Homebrew:
 
-        brew install LucasStbnr/tap/ferry
+        brew install --cask LucasStbnr/tap/ferry
 
     Docker:
 

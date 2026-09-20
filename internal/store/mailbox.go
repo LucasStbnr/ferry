@@ -12,9 +12,9 @@ import (
 // Delim is the IMAP hierarchy separator Ferry exposes.
 const Delim = '/'
 
-// Standard mailbox names and their SPECIAL-USE attributes. Apple Mail uses
-// SPECIAL-USE to bind its Sent/Drafts/Trash/Junk/Archive buttons to the right
-// folder instead of guessing from names.
+// Standard mailbox names and their SPECIAL-USE attributes. Clients use
+// SPECIAL-USE to bind their Sent/Drafts/Trash/Junk/Archive buttons to the
+// right folder instead of guessing from names.
 const (
 	Inbox   = "INBOX"
 	Sent    = "Sent"

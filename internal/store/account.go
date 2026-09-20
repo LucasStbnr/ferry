@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// Account is one Resend account, exposed to Apple Mail as one IMAP/SMTP login.
+// Account is one Resend account, exposed as one IMAP/SMTP login.
 type Account struct {
 	ID           int64
 	Name         string

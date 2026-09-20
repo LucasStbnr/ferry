@@ -38,7 +38,8 @@ internal/imapd/         IMAP server (go-imap v2)
 internal/smtpd/         SMTP submission (go-smtp)
 internal/webhook/       Svix-verified event receiver
 internal/tlsutil/       local CA and leaf certificate
-internal/mobileconfig/  Apple configuration profile
+internal/mobileconfig/  Apple configuration profile (macOS and iOS only)
+internal/service/       launchd and systemd integration
 internal/control/       Unix socket between the CLI and the daemon
 internal/testutil/      fake Resend API for tests
 ```
@@ -118,7 +119,7 @@ Nothing is ever stored partially. That is why the backfill runs eagerly at
 ## IMAP
 
 Built on `emersion/go-imap/v2`'s `imapserver`, which is beta, so the version
-is pinned and the capabilities Apple Mail depends on are covered by tests that
+is pinned and the capabilities clients depend on are covered by tests that
 drive a real client: NAMESPACE, SPECIAL-USE, UIDPLUS, MOVE, IDLE,
 LIST-EXTENDED, ESEARCH, SEARCHRES.
 
@@ -145,8 +146,8 @@ Two subtleties that look like bugs if you remove them:
 ## SMTP
 
 Submission only, implicit TLS, AUTH PLAIN and LOGIN. (LOGIN is not in any RFC
-and `go-sasl` ships only a client for it, but Apple Mail still offers it, so
-Ferry implements the server side.)
+and `go-sasl` ships only a client for it, but several mail clients still offer
+it, so Ferry implements the server side.)
 
 The send path:
 
@@ -157,8 +158,8 @@ The send path:
 3. Refuse anything Resend's structured API would silently destroy, such as an
    S/MIME signature.
 4. Map to the send payload, carrying `In-Reply-To` and `References` so
-   threading survives, and derive Bcc from the envelope recipients, since Mail
-   strips Bcc from the message body.
+   threading survives, and derive Bcc from the envelope recipients, since
+   clients strip Bcc from the message body.
 5. Send with an `Idempotency-Key` derived from the message, so a retry after a
    timeout cannot send twice.
 6. File the submitted bytes verbatim in Sent, tagged with the Resend id so the
@@ -166,17 +167,34 @@ The send path:
 
 Errors map onto SMTP codes by whether retrying can help: quota is permanent
 (5xx), rate limiting and API outages are temporary (4xx). The message text is
-user-facing copy; Mail shows it verbatim in the Outbox.
+user-facing copy; clients show it verbatim in the outbox.
 
 ## TLS
 
 Ferry generates a private CA and a leaf for `localhost` and `127.0.0.1` on
-first run, and `ferry trust` adds the CA to the login keychain. The leaf lasts
+first run, and `ferry trust` adds the CA to the system trust store. The leaf lasts
 825 days, the maximum Apple platforms accept, and renews automatically when it
 is within 30 days of expiry.
 
 There is no cleartext mode, not even on loopback: an app password on a local
 socket is still a password any process on the machine could read.
+
+## Running as a service
+
+`ferry service` writes and controls a per-user LaunchAgent on macOS or a
+`systemctl --user` unit on Linux. Ferry does this itself rather than relying on
+`brew services`, which only works for Homebrew formulae, and a formula is the
+wrong artifact for a pre-built binary, which is why Homebrew and GoReleaser
+both point at casks now. Doing it in the binary means the service works the
+same however Ferry was installed.
+
+Per-user, not system-wide: the data directory is in the user's home and the
+API keys are in the user's login keychain, neither of which a root daemon
+could reach.
+
+On launchd the agent is registered with `KeepAlive`, so stopping it means
+booting it out of the domain rather than signalling it, since a signal just gets
+the process restarted a second later.
 
 ## Concurrency
 

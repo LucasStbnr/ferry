@@ -1,6 +1,6 @@
 // Command ferry bridges a Resend account into any IMAP/SMTP mail client.
 //
-// Resend has no IMAP or SMTP, so Apple Mail cannot talk to it. Ferry runs
+// Resend has no IMAP or SMTP, so no mail client can talk to it. Ferry runs
 // locally, keeps a full copy of the account's mail in SQLite, and serves it as
 // an ordinary mail account: read, reply, send, search, folders and flags all
 // work, and everything Resend cannot model (read state, folders, drafts,

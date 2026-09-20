@@ -58,7 +58,7 @@ type AddOptions struct {
 	// APIKey is the Resend API key. It is stored in the secret store, never in
 	// the database, and never logged.
 	APIKey string
-	// Address is the From address Apple Mail should use. When empty it is
+	// Address is the From address the client should use. When empty it is
 	// derived from the account's first verified domain.
 	Address string
 	// Password sets the app password instead of generating one.

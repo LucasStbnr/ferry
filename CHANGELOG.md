@@ -11,11 +11,11 @@ GoReleaser; this file carries the human summary.
 
 ### Added
 
-- IMAP server (`internal/imapd`) with the capabilities Apple Mail relies on:
+- IMAP server (`internal/imapd`) with the capabilities mail clients rely on:
   NAMESPACE, SPECIAL-USE, UIDPLUS, MOVE, IDLE, LIST-EXTENDED, ESEARCH and
   SEARCHRES. Full-text search is answered from SQLite's FTS5 index.
 - SMTP submission server (`internal/smtpd`) with synchronous sends, so a
-  failure appears in Mail's Outbox instead of disappearing into a queue.
+  failure appears in the client's outbox instead of disappearing into a queue.
   From-domain checks run against the account's verified Resend domains.
 - Sync engine (`internal/mailsync`) with a resumable full-history backfill,
   incremental polling, dedupe by Resend id and Message-ID, and tombstones so a
@@ -24,13 +24,15 @@ GoReleaser; this file carries the human summary.
   the read state, folders, drafts and deletions that Resend does not model.
 - Webhook receiver (`internal/webhook`) with mandatory Svix signature
   verification. Bounces and spam complaints become flagged Inbox messages.
-- Local certificate authority and `ferry trust`, so Apple Mail connects over
+- Local certificate authority and `ferry trust`, so mail clients connect over
   TLS without a warning.
+- `ferry service`, which installs Ferry as a per-user LaunchAgent on macOS or
+  a `systemctl --user` unit on Linux, whatever way Ferry was installed.
 - `ferry mail-profile`, which writes an Apple configuration profile that sets
-  up Mail in one double-click.
+  up Mail in one double-click on macOS and iOS.
 - `ferry doctor`, which checks the installation end to end and reports what to
   do about anything wrong.
-- Homebrew formula with a `brew services` definition, and a distroless
-  container image for self-hosting.
+- Homebrew cask and a multi-architecture distroless container image for
+  self-hosting.
 
 [Unreleased]: https://github.com/LucasStbnr/ferry/compare/v0.1.0...HEAD

@@ -255,7 +255,7 @@ func indexCloseTag(s, tag string) int {
 	return j + k + 1
 }
 
-// Submission is a message Apple Mail handed to the SMTP server, reduced to the
+// Submission is a message a client handed to the SMTP server, reduced to the
 // pieces Resend's send API accepts.
 type Submission struct {
 	From        string

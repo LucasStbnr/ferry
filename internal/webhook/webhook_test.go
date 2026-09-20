@@ -2,7 +2,10 @@ package webhook_test
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -15,7 +18,19 @@ import (
 	"github.com/LucasStbnr/ferry/internal/webhook"
 )
 
-const signingSecret = "whsec_dGVzdC1zZWNyZXQtdmFsdWUtZm9yLWZlcnJ5"
+// The signing secret is generated per run rather than written into the
+// source. A literal "whsec_..." string is indistinguishable from a real
+// Stripe or Svix secret to a scanner, so committing even an obviously fake
+// one trips secret scanning here and push protection in every fork.
+var signingSecret = newSigningSecret()
+
+func newSigningSecret() string {
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		panic("webhook test: " + err.Error())
+	}
+	return "whsec_" + base64.StdEncoding.EncodeToString(key)
+}
 
 type stubSyncer struct {
 	mu        sync.Mutex
@@ -381,4 +396,70 @@ func TestHostileEventTypeIsHandled(t *testing.T) {
 	if n := len(f.inbox(t)); n != 0 {
 		t.Fatalf("an unknown event type produced %d messages", n)
 	}
+}
+
+func TestRejectionReasonsAreAFixedSet(t *testing.T) {
+	f := newFixture(t)
+
+	// Whatever a caller sends, the rejection path must log one of a closed set
+	// of reasons and return nothing about why. Nothing here should panic, hang
+	// or echo the input back.
+	cases := []struct {
+		name   string
+		mangle func(http.Header)
+	}{
+		{"no signature", func(h http.Header) { h.Del("Svix-Signature") }},
+		{"no id", func(h http.Header) { h.Del("Svix-Id") }},
+		// Go's net/http refuses to send or accept a header value containing
+		// control characters, so a newline cannot arrive this way at all;
+		// this covers the rest of the garbage that can.
+		{"garbage timestamp", func(h http.Header) { h.Set("Svix-Timestamp", "not-a-number") }},
+		{"far-future timestamp", func(h http.Header) { h.Set("Svix-Timestamp", "99999999999") }},
+		{"garbage signature", func(h http.Header) { h.Set("Svix-Signature", "v1,!!!not-base64!!!") }},
+		{"empty signature list", func(h http.Header) { h.Set("Svix-Signature", "   ") }},
+		{"huge id", func(h http.Header) { h.Set("Svix-Id", strings.Repeat("z", 4000)) }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := f.post(t, "/webhooks/resend", receivedEvent(), tc.mangle)
+			if resp.StatusCode != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want 401", resp.StatusCode)
+			}
+			body, _ := io.ReadAll(resp.Body)
+			if got := strings.TrimSpace(string(body)); got != "unauthorized" {
+				t.Fatalf("body = %q; the reason must not be disclosed", got)
+			}
+		})
+	}
+	if f.syncer.count() != 0 {
+		t.Fatal("a rejected request caused a sync")
+	}
+}
+
+func TestSecretRotationAcceptsEitherSignature(t *testing.T) {
+	f := newFixture(t)
+
+	// Svix sends several "v1,<sig>" entries while a secret is being rotated.
+	// Any one of them matching must be enough, or rotation breaks delivery.
+	body, err := json.Marshal(receivedEvent())
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := f.signer.Sign("msg_rotate", time.Now(), body)
+
+	req, _ := http.NewRequest(http.MethodPost, f.srv.URL+"/webhooks/resend", strings.NewReader(string(body)))
+	req.Header.Set("Svix-Id", valid.Get("Svix-Id"))
+	req.Header.Set("Svix-Timestamp", valid.Get("Svix-Timestamp"))
+	req.Header.Set("Svix-Signature",
+		"v1,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA= "+valid.Get("Svix-Signature"))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", resp.StatusCode)
+	}
+	waitFor(t, "a sync to be triggered", func() bool { return f.syncer.count() == 1 })
 }

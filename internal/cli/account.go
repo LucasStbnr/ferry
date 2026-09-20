@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"text/tabwriter"
 
@@ -50,7 +51,7 @@ not end up in the shell history. It is stored in the system keyring, never in
 Ferry's database, and never written to a log.
 
 Ferry generates an app password for this account and prints it once. That is
-the password Apple Mail uses for both IMAP and SMTP; Ferry keeps only a hash
+the password your mail client uses for both IMAP and SMTP; Ferry keeps only a hash
 of it, so a lost password has to be replaced with ` + "`ferry account passwd`" + `.
 
 The full history is downloaded in the background from the moment the account
@@ -97,7 +98,11 @@ is added, because Resend's raw-message and attachment links expire.`,
 			e.printf("  App password    %s\n", created.Password)
 			e.printf("\nThis password is shown once and cannot be recovered. " +
 				"Run `ferry account passwd` to replace it.\n")
-			e.printf("\nNext: `ferry trust`, then `ferry mail-profile` to configure Apple Mail.\n")
+			e.printf("\nNext: run `ferry trust` so clients accept Ferry's certificate, then\n")
+			e.printf("configure your mail client with the settings above.\n")
+			if runtime.GOOS == "darwin" {
+				e.printf("For Apple Mail, `ferry mail-profile --open` does it in one step.\n")
+			}
 
 			if !noSync {
 				notifyDaemonReload(ctx, e)
@@ -209,8 +214,8 @@ func newAccountPasswdCmd(e *env) *cobra.Command {
 		Long: `Replaces the account's app password and prints the new one.
 
 Any mail client configured with the old password stops working immediately,
-so update Apple Mail (or reinstall the profile from ` + "`ferry mail-profile`" + `)
-right afterwards.`,
+so update your mail client (or, on macOS, reinstall the profile from
+` + "`ferry mail-profile`" + `) right afterwards.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -224,7 +229,7 @@ right afterwards.`,
 				return err
 			}
 			e.printf("New app password for %q: %s\n", args[0], newPassword)
-			e.printf("\nUpdate Apple Mail with this password. It is shown once.\n")
+			e.printf("\nUpdate your mail client with this password. It is shown once.\n")
 			return nil
 		},
 	}
@@ -274,7 +279,7 @@ func newAccountWebhookCmd(e *env) *cobra.Command {
 		Long: `Stores the signing secret Resend shows when you create a webhook endpoint.
 
 With a secret stored and a webhook address configured, new mail appears in
-Apple Mail as soon as Resend delivers the event, and bounces and spam
+your mail client as soon as Resend delivers the event, and bounces and spam
 complaints are filed into the Inbox as delivery notices.
 
 Every webhook request must carry a valid signature; there is no way to turn

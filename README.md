@@ -1,11 +1,11 @@
 # Ferry
 
-**Ferry puts a Resend account into Apple Mail.**
+**Ferry makes a Resend account work in a normal mail client.**
 
 Resend delivers your mail and shows it in a dashboard. It has no IMAP and no
-SMTP, so Apple Mail (or Thunderbird, or your phone) cannot touch it. Ferry
-runs on your machine, keeps a full copy of the account, and serves it as an
-ordinary mail account.
+SMTP, so Apple Mail, Thunderbird, Outlook and your phone all can't touch it.
+Ferry runs on your machine, keeps a full copy of the account, and serves it as
+an ordinary mail account.
 
 Read, reply, send, search, folders, flags, drafts. It behaves like mail,
 because to your client it *is* mail.
@@ -19,20 +19,25 @@ because to your client it *is* mail.
 ## Install
 
 ```bash
-brew install LucasStbnr/tap/ferry
+brew install --cask LucasStbnr/tap/ferry
 ```
 
 Then, for each Resend account:
 
 ```bash
 ferry account add mysite      # paste your Resend API key; note the app password
-ferry trust                   # so Mail accepts Ferry's local certificate
-ferry mail-profile --open     # configures Apple Mail in one double-click
-brew services start ferry     # run it in the background
+ferry trust                   # so clients accept Ferry's local certificate
+ferry service install         # run it in the background from now on
 ```
 
-That is the whole setup. Mail now has a new account, with your history already
-downloading into it.
+`ferry account add` prints the host, the ports and the credentials. Point any
+mail client at them and your history is already downloading into it.
+
+On macOS there is a shortcut for Apple Mail, one file and one double-click:
+
+```bash
+ferry mail-profile --open
+```
 
 <details>
 <summary>Other ways to install</summary>
@@ -43,7 +48,15 @@ downloading into it.
 go install github.com/LucasStbnr/ferry/cmd/ferry@latest
 ```
 
+**A release archive**: download from
+[Releases](https://github.com/LucasStbnr/ferry/releases), unpack, and put
+`ferry` on your `PATH`.
+
 **Docker**: see [Self-hosting](#self-hosting).
+
+`ferry service install` works with any of these: it registers Ferry with
+launchd or systemd directly, so it does not depend on how Ferry was
+installed.
 
 </details>
 
@@ -59,7 +72,7 @@ database and a content-addressed message store; everything Resend knows is
 pulled down and never pushed back.
 
 ```
-   Apple Mail                  Ferry                      Resend
+  Mail client                  Ferry                      Resend
   ┌──────────┐          ┌──────────────────┐          ┌───────────┐
   │          │  IMAP    │  imapd           │          │           │
   │  read    │─────────▶│    flags         │          │  received │
@@ -77,8 +90,8 @@ pulled down and never pushed back.
                          does not model)
 ```
 
-Each Resend account becomes a **separate account** in Mail, with its own
-login, its own mailbox tree and no way for one to see another's messages.
+Each Resend account becomes a **separate account** in your client, with its
+own login, its own mailbox tree and no way for one to see another's messages.
 
 ### Deliberate choices worth knowing about
 
@@ -90,14 +103,15 @@ backfill starts the moment you add the account, and resumes exactly where it
 stopped if interrupted.
 
 **Deleting means deleting.** Resend has no delete, so a message you remove in
-Mail is removed locally and recorded as a tombstone. The next sync recognises
-it and does not bring it back. Your Resend account is never modified.
+your client is removed locally and recorded as a tombstone. The next sync
+recognises it and does not bring it back. Your Resend account is never
+modified.
 
-**Sending is synchronous.** When Mail hands Ferry a message, Ferry waits for
-Resend to accept it and returns the real answer on the SMTP transaction. Over
-quota, unverified domain, too many recipients: you see it in the Outbox, in
-plain words, at the moment it happens. There is no hidden queue and no message
-that claims to be sent but is not.
+**Sending is synchronous.** When your client hands Ferry a message, Ferry
+waits for Resend to accept it and returns the real answer on the SMTP
+transaction. Over quota, unverified domain, too many recipients: you see it
+in the outbox, in plain words, at the moment it happens. There is no hidden
+queue and no message that claims to be sent but is not.
 
 **Your Sent folder is everything Resend sent**, including the transactional
 mail your website sends. Replies you write are stored byte for byte as you
@@ -115,12 +129,14 @@ composed them.
 | `ferry account refresh <name>` | Re-read verified sending domains from Resend |
 | `ferry account webhook <name>` | Store the webhook signing secret |
 | `ferry account remove <name>` | Remove an account and its local mail |
-| `ferry serve` | Run the daemon |
+| `ferry serve` | Run the daemon in the foreground |
+| `ferry service install` | Run it in the background under launchd or systemd |
+| `ferry service start` / `stop` / `restart` / `status` | Control the background service |
 | `ferry sync [account]` | Fetch now instead of waiting for the next poll |
 | `ferry status` | Daemon state, per-account counts, last sync |
 | `ferry doctor [--repair]` | Check everything and say what to fix |
 | `ferry trust` | Trust Ferry's local certificate authority |
-| `ferry mail-profile` | Write an Apple Mail configuration profile |
+| `ferry mail-profile` | Write an Apple configuration profile (macOS, iOS) |
 
 Run `ferry <command> --help` for the details.
 
@@ -266,26 +282,32 @@ credentials, and whether the servers actually answer a TLS connection, and
 tells you what to do about anything it finds.
 
 <details>
-<summary>Mail says the certificate is not trusted</summary>
+<summary>The client says the certificate is not trusted</summary>
 
-Run `ferry trust`, then quit and reopen Mail. If you installed the
-configuration profile, approve it in **System Settings → General → Device
-Management**; the profile carries the certificate with it.
+Run `ferry trust`, then quit and reopen the client, since trust decisions are
+usually cached per process. On macOS, if you installed the configuration
+profile, approve it in **System Settings → General → Device Management**; the
+profile carries the certificate with it.
+
+Some clients keep their own trust store rather than the system's. Thunderbird
+is one: add Ferry's CA under **Settings → Privacy & Security → Certificates →
+View Certificates → Authorities → Import**, using the file that
+`ferry trust --print > ferry-ca.crt` gives you.
 </details>
 
 <details>
-<summary>Mail cannot connect at all</summary>
+<summary>The client cannot connect at all</summary>
 
-Check the daemon is running (`ferry status`) and that the ports match what
-Mail is configured with. `ferry mail-profile` always writes the ports the
-daemon is actually listening on, which is not necessarily what is in
-`config.json` if `ferry serve` was given flag overrides.
+Check the daemon is running (`ferry status`) and that the ports match what the
+client is configured with. `ferry status` reports the ports the daemon is
+actually listening on, which is not necessarily what is in `config.json` if
+`ferry serve` was given flag overrides.
 </details>
 
 <details>
 <summary>Sending fails</summary>
 
-The SMTP error text in Mail's Outbox says why. The usual causes are an
+The SMTP error text in your client's outbox says why. The usual causes are an
 unverified From domain (`ferry account refresh <name>` after verifying it in
 Resend) and an exhausted send quota.
 </details>
@@ -319,7 +341,8 @@ Resend API, including its rate limits and expiring URLs. The IMAP and SMTP
 suites drive the real servers with real clients, and the end-to-end suite
 builds the binary, starts a daemon and talks to it over TLS.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/architecture.md](docs/architecture.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md), [docs/architecture.md](docs/architecture.md)
+and [docs/mail-clients.md](docs/mail-clients.md).
 
 ---
 

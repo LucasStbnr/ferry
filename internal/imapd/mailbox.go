@@ -1,5 +1,5 @@
-// Package imapd exposes each Resend account as an IMAP server that Apple Mail
-// can use as an ordinary account.
+// Package imapd exposes each Resend account as an IMAP server that any mail
+// client can use as an ordinary account.
 //
 // The design mirrors go-imap's reference in-memory server, but the state of
 // record is the SQLite store. A mailbox keeps the ordered UID list in memory so

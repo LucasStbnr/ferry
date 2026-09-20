@@ -41,6 +41,7 @@ body:
         - Apple Mail (macOS)
         - Apple Mail (iOS)
         - Thunderbird
+        - Outlook
         - Other
         - Not applicable
     validations:
@@ -50,5 +51,5 @@ body:
     id: logs
     attributes:
       label: Relevant log output
-      description: From `ferry serve --log-level debug`, or `brew services` logs.
+      description: From `ferry serve --log-level debug`, or the service log that `ferry service status` points at.
       render: text

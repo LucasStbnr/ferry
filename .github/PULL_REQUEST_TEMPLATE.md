@@ -6,11 +6,12 @@
 
 <!--
 `make check` is the baseline. If this touches the mail path, say what you
-tried by hand; the suite drives a real IMAP client, but it is not Apple Mail.
+tried by hand and in which client; the suite drives a real IMAP client, but
+it is not a mail program.
 -->
 
 - [ ] `make check` passes
-- [ ] Tested against a real mail client, if this affects the mail path
+- [ ] Tested against a real mail client, if this affects the mail path (say which)
 
 ## Checklist
 

@@ -18,7 +18,7 @@ import (
 
 // session is one IMAP connection. It is bound to a single account from the
 // moment it authenticates and holds no reference to any other, which is how
-// two Resend accounts stay separate accounts in Apple Mail.
+// two Resend accounts stay separate accounts in the client.
 type session struct {
 	server *Server
 	log    *slog.Logger
