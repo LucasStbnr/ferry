@@ -2,6 +2,8 @@ package cli
 
 import (
 	"fmt"
+	"io"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -16,6 +18,7 @@ func newServeCmd(e *env) *cobra.Command {
 		smtpAddr string
 		hookAddr string
 		noSync   bool
+		trace    bool
 	)
 	cmd := &cobra.Command{
 		Use:   "serve",
@@ -54,7 +57,24 @@ addresses in config.json to do that deliberately.`,
 			}
 			warnIfExposed(e)
 
+			// Kept as io.Writer rather than *os.File: a nil *os.File stored in
+			// an interface is not a nil interface, and the servers would then
+			// write to it and panic.
+			var traceWriter io.Writer
+			if trace {
+				path := e.cfg.Path("protocol.log")
+				f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+				if err != nil {
+					return fmt.Errorf("open protocol trace: %w", err)
+				}
+				defer func() { _ = f.Close() }()
+				traceWriter = f
+				e.log.Warn("protocol tracing is on; the trace contains app passwords in plain text",
+					"path", path)
+			}
+
 			d, err := daemon.New(daemon.Options{
+				Trace:   traceWriter,
 				Config:  e.cfg,
 				DB:      e.db,
 				Secrets: e.sec,
@@ -75,6 +95,8 @@ addresses in config.json to do that deliberately.`,
 	cmd.Flags().StringVar(&smtpAddr, "smtp-addr", "", "override the SMTP listen address")
 	cmd.Flags().StringVar(&hookAddr, "webhook-addr", "", "enable the webhook receiver on this address")
 	cmd.Flags().BoolVar(&noSync, "no-poll", false, "do not poll Resend; sync only on demand or from webhooks")
+	cmd.Flags().BoolVar(&trace, "trace-protocol", false,
+		"log the raw IMAP and SMTP conversation to protocol.log (contains app passwords; for debugging only)")
 	return cmd
 }
 

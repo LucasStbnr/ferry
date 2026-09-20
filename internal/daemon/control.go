@@ -166,7 +166,10 @@ func (d *Daemon) Reload(ctx context.Context) error {
 		if known[accounts[i].Name] {
 			continue
 		}
-		d.log.Info("account added", "account", accounts[i].Name)
+		// Not necessarily a new account: an existing one whose API key was
+		// missing starts syncing here too, and calling that "added" sent me
+		// chasing an account that had never gone anywhere.
+		d.log.Info("account now syncing", "account", accounts[i].Name)
 		d.startAccount(context.WithoutCancel(ctx), &accounts[i])
 	}
 	return nil

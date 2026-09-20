@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -39,6 +40,9 @@ type Options struct {
 	Logger  *slog.Logger
 	// Version is reported by `ferry status`.
 	Version string
+	// Trace, when set, receives the raw IMAP and SMTP conversation. It
+	// contains credentials, so it is only ever enabled deliberately.
+	Trace io.Writer
 }
 
 // Daemon is the running service.
@@ -87,6 +91,7 @@ func New(opts Options) (*Daemon, error) {
 			Auth:        opts.Manager,
 			AppendLimit: opts.Config.Sync.MaxMessageBytes,
 			Logger:      opts.Logger,
+			DebugWriter: opts.Trace,
 		})
 		if err != nil {
 			return nil, err
@@ -103,6 +108,7 @@ func New(opts Options) (*Daemon, error) {
 			MaxMessageBytes: opts.Config.Sync.MaxMessageBytes,
 			Logger:          opts.Logger,
 			OnSent:          d.notifyMailbox,
+			DebugWriter:     opts.Trace,
 		})
 		if err != nil {
 			return nil, err

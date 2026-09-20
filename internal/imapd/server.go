@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"sync"
@@ -46,7 +47,7 @@ type Options struct {
 	Logger      *slog.Logger
 	// DebugWriter, if set, receives the raw protocol stream. It contains
 	// credentials, so it is only ever enabled deliberately.
-	DebugWriter interface{ Write([]byte) (int, error) }
+	DebugWriter io.Writer
 }
 
 // Server serves IMAP for every account in the database.
@@ -101,18 +102,9 @@ func New(opts Options) (*Server, error) {
 		Caps:        caps,
 		Logger:      slogAdapter{opts.Logger},
 		TLSConfig:   opts.TLSConfig,
-		DebugWriter: writerOrNil(opts.DebugWriter),
+		DebugWriter: opts.DebugWriter,
 	})
 	return s, nil
-}
-
-func writerOrNil(w interface{ Write([]byte) (int, error) }) interface {
-	Write([]byte) (int, error)
-} {
-	if w == nil {
-		return nil
-	}
-	return w
 }
 
 func (s *Server) appendLimit() int64 {

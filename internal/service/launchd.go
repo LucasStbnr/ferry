@@ -124,19 +124,24 @@ func (l launchd) Stop(ctx context.Context) error {
 	return l.bootout(ctx)
 }
 
-// Restart implements Manager.
+// Restart unloads and reloads the agent.
+//
+// `kickstart -k` would be enough to bounce the process, but launchd would
+// reuse the job exactly as it was loaded, so an edited plist would be
+// ignored and the restart would silently run the old definition. Booting out
+// and back in is what makes "restart" mean "re-read everything".
 func (l launchd) Restart(ctx context.Context) error {
 	path, err := l.requireInstalled()
 	if err != nil {
 		return err
 	}
-	// -k kills the running instance and starts it again in one step, but only
-	// works if the agent is loaded; otherwise load it.
-	if err := run(ctx, "launchctl", "kickstart", "-k", serviceTarget()); err == nil {
-		return nil
-	}
+	_ = l.bootout(ctx)
 	_ = run(ctx, "launchctl", "enable", serviceTarget())
-	return run(ctx, "launchctl", "bootstrap", domainTarget(), path)
+	if err := run(ctx, "launchctl", "bootstrap", domainTarget(), path); err != nil {
+		// Already back up, or never fully out: make sure it is running.
+		return run(ctx, "launchctl", "kickstart", serviceTarget())
+	}
+	return nil
 }
 
 // requireInstalled returns the path of the installed agent, or an error

@@ -335,6 +335,7 @@ func (s *session) Expunge(w *imapserver.ExpungeWriter, uids *imap.UIDSet) error 
 	sel.mu.Unlock()
 
 	if len(ids) == 0 {
+		s.log.Debug("expunge matched nothing", "mailbox", sel.name)
 		return nil
 	}
 	if err := s.user.store.Expunge(s.ctx, ids); err != nil {
@@ -365,8 +366,10 @@ func (s *session) Copy(numSet imap.NumSet, dest string) (*imap.CopyData, error) 
 	}
 	res, err := s.user.store.Copy(s.ctx, ids, destBox.id)
 	if err != nil {
+		s.log.Warn("copy failed", "from", sel.name, "to", destBox.name, "count", len(ids), "error", err)
 		return nil, imapError(err)
 	}
+	s.log.Info("copied messages", "from", sel.name, "to", destBox.name, "count", len(res))
 	if err := destBox.reload(s.ctx); err != nil {
 		return nil, imapError(err)
 	}
@@ -408,8 +411,10 @@ func (s *session) Move(w *imapserver.MoveWriter, numSet imap.NumSet, dest string
 
 	res, err := s.user.store.Move(s.ctx, ids, destBox.id)
 	if err != nil {
+		s.log.Warn("move failed", "from", sel.name, "to", destBox.name, "count", len(ids), "error", err)
 		return imapError(err)
 	}
+	s.log.Info("moved messages", "from", sel.name, "to", destBox.name, "count", len(res))
 
 	destBox.mu.Lock()
 	uidValidity := destBox.uidValidity
@@ -468,6 +473,7 @@ func (s *session) Store(w *imapserver.FetchWriter, numSet imap.NumSet, flags *im
 	if _, err := s.user.store.StoreFlags(s.ctx, ids, op, strs); err != nil {
 		return imapError(err)
 	}
+	s.log.Debug("stored flags", "mailbox", sel.name, "count", len(ids), "op", flags.Op, "flags", strs)
 	if err := sel.reload(s.ctx); err != nil {
 		return imapError(err)
 	}
