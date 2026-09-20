@@ -13,6 +13,7 @@ CREATE TABLE accounts (
     id            INTEGER PRIMARY KEY,
     name          TEXT    NOT NULL UNIQUE,
     address       TEXT    NOT NULL DEFAULT '',  -- primary From address
+    display_name  TEXT    NOT NULL DEFAULT '',  -- name a client shows on outgoing mail
     domains       TEXT    NOT NULL DEFAULT '',  -- space-separated verified sending domains
     password_hash TEXT    NOT NULL DEFAULT '',  -- bcrypt of the generated app password
     created_at    INTEGER NOT NULL

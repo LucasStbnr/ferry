@@ -347,3 +347,165 @@ func TestAPIKeyErrorIsActionable(t *testing.T) {
 		t.Errorf("error = %q; it should say how to fix the problem", err)
 	}
 }
+
+// TestSetAPIKeyPreservesEverythingElse is the recovery path: a key that was
+// revoked, rotated, or removed from the credential store must be replaceable
+// without the user reconfiguring their mail client or losing stored mail.
+func TestSetAPIKeyPreservesEverythingElse(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+
+	created, err := f.mgr.Add(ctx, account.AddOptions{Name: "mysite", APIKey: apiKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	as := f.db.Account(created.Account)
+	inbox, err := as.Mailbox(ctx, store.Inbox)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := as.Append(ctx, inbox.ID, &store.NewMessage{
+		Raw: []byte("Subject: kept\r\n\r\nbody\r\n"), Flags: []string{`\Seen`},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate the credential store losing the key.
+	if err := f.sec.Delete(secrets.APIKey("mysite")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.mgr.APIKey("mysite"); err == nil {
+		t.Fatal("setup: the key should be gone")
+	}
+
+	domains, err := f.mgr.SetAPIKey(ctx, "mysite", apiKey)
+	if err != nil {
+		t.Fatalf("SetAPIKey: %v", err)
+	}
+	if len(domains) != 1 {
+		t.Errorf("domains = %v", domains)
+	}
+
+	// The key is back.
+	if got, err := f.mgr.APIKey("mysite"); err != nil || got != apiKey {
+		t.Fatalf("APIKey = %q, %v", got, err)
+	}
+	// The app password still works, so the mail client needs no changes.
+	if _, err := f.mgr.Authenticate(ctx, "mysite", created.Password); err != nil {
+		t.Errorf("the existing app password stopped working: %v", err)
+	}
+	// The mail and its read state survived.
+	msgs, err := as.Messages(ctx, inbox.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("%d messages after replacing the key, want 1", len(msgs))
+	}
+	if len(msgs[0].Flags) != 1 || msgs[0].Flags[0] != `\Seen` {
+		t.Errorf("flags = %v, want the message to still be read", msgs[0].Flags)
+	}
+}
+
+func TestSetAPIKeyRejectsBadInput(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	if _, err := f.mgr.Add(ctx, account.AddOptions{Name: "mysite", APIKey: apiKey}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := f.mgr.SetAPIKey(ctx, "nosuch", apiKey); err == nil {
+		t.Error("setting a key on a missing account succeeded")
+	}
+	if _, err := f.mgr.SetAPIKey(ctx, "mysite", ""); err == nil {
+		t.Error("an empty key was accepted")
+	}
+	// A bad key must not replace the working one.
+	if _, err := f.mgr.SetAPIKey(ctx, "mysite", "re_wrong"); err == nil {
+		t.Error("an invalid key was accepted")
+	}
+	if got, _ := f.mgr.APIKey("mysite"); got != apiKey {
+		t.Errorf("a rejected key overwrote the working one: %q", got)
+	}
+}
+
+func TestSetIdentity(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	if _, err := f.mgr.Add(ctx, account.AddOptions{Name: "mysite", APIKey: apiKey}); err != nil {
+		t.Fatal(err)
+	}
+
+	acct, err := f.mgr.SetIdentity(ctx, "mysite", "contact@mysite.test", "Acme Support")
+	if err != nil {
+		t.Fatalf("SetIdentity: %v", err)
+	}
+	if acct.Address != "contact@mysite.test" {
+		t.Errorf("address = %q", acct.Address)
+	}
+	if acct.DisplayName != "Acme Support" {
+		t.Errorf("display name = %q", acct.DisplayName)
+	}
+
+	// Either field alone leaves the other alone.
+	acct, err = f.mgr.SetIdentity(ctx, "mysite", "", "Acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if acct.Address != "contact@mysite.test" || acct.DisplayName != "Acme" {
+		t.Fatalf("partial update gave %q / %q", acct.Address, acct.DisplayName)
+	}
+
+	// A display name with an address in it is taken as a bare name.
+	if _, err := f.mgr.SetIdentity(ctx, "mysite", "Someone <hello@mysite.test>", ""); err != nil {
+		t.Fatalf("an address with a display name should be accepted: %v", err)
+	}
+	if acct, _ := f.db.AccountByName(ctx, "mysite"); acct.Address != "hello@mysite.test" {
+		t.Errorf("address = %q, want the bare addr-spec", acct.Address)
+	}
+}
+
+// TestSetIdentityRefusesUnsendableAddresses keeps the failure where the user
+// can see it. Accepting an address the SMTP server will reject on every send
+// only moves the error somewhere less obvious.
+func TestSetIdentityRefusesUnsendableAddresses(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	if _, err := f.mgr.Add(ctx, account.AddOptions{Name: "mysite", APIKey: apiKey}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := f.mgr.SetIdentity(ctx, "mysite", "someone@notmine.test", ""); err == nil {
+		t.Error("an address on an unverified domain was accepted")
+	} else if !strings.Contains(err.Error(), "notmine.test") {
+		t.Errorf("error should name the domain: %v", err)
+	}
+	if _, err := f.mgr.SetIdentity(ctx, "mysite", "not-an-address", ""); err == nil {
+		t.Error("a malformed address was accepted")
+	}
+	if _, err := f.mgr.SetIdentity(ctx, "nosuch", "hello@mysite.test", ""); err == nil {
+		t.Error("an unknown account was accepted")
+	}
+	// The original address survived every rejection.
+	if acct, _ := f.db.AccountByName(ctx, "mysite"); acct.Address != "hello@mysite.test" {
+		t.Errorf("a rejected change modified the address: %q", acct.Address)
+	}
+}
+
+func TestAddAcceptsADisplayName(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	created, err := f.mgr.Add(ctx, account.AddOptions{
+		Name: "mysite", APIKey: apiKey, DisplayName: "Acme",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Account.DisplayName != "Acme" {
+		t.Errorf("display name = %q", created.Account.DisplayName)
+	}
+	stored, _ := f.db.AccountByName(ctx, "mysite")
+	if stored.DisplayName != "Acme" {
+		t.Errorf("stored display name = %q", stored.DisplayName)
+	}
+}

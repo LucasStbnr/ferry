@@ -113,3 +113,60 @@ func TestXMLIsEscaped(t *testing.T) {
 		t.Errorf("escaping is wrong:\n%s", profile)
 	}
 }
+
+// TestNoEmptyPathPrefix guards the setting that broke deleting mail.
+//
+// An empty IncomingMailServerIMAPPathPrefix is not the same as no key: Mail
+// builds paths as prefix + delimiter + name and asks for "/Trash", which does
+// not exist, so its delete (a move to Trash) fails silently.
+func TestNoEmptyPathPrefix(t *testing.T) {
+	profile := string(buildProfile(t, ""))
+	if strings.Contains(profile, "IncomingMailServerIMAPPathPrefix") {
+		t.Error("the profile sets an IMAP path prefix; Ferry's mailboxes are at the namespace root and the key must be absent")
+	}
+}
+
+func TestSenderNameIsSeparateFromTheSidebarLabel(t *testing.T) {
+	bundle, err := tlsutil.EnsureBundle(filepath.Join(t.TempDir(), "tls"), []string{"localhost"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := mobileconfig.Build(mobileconfig.Options{
+		CACertPEM: bundle.CACertPEM,
+		Accounts: []mobileconfig.Account{{
+			Name: "mysite", DisplayName: "mysite", SenderName: "Acme Support",
+			Address:  "contact@mysite.test",
+			IMAPHost: "localhost", IMAPPort: 1993, SMTPHost: "localhost", SMTPPort: 1465,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(profile)
+	// EmailAccountName is what recipients see; EmailAccountDescription is the
+	// label in the client's sidebar. They are not the same setting.
+	if !strings.Contains(got, "<key>EmailAccountName</key>\n\t\t\t<string>Acme Support</string>") {
+		t.Errorf("sender name missing from the profile:\n%s", got)
+	}
+	if !strings.Contains(got, "<key>EmailAccountDescription</key>\n\t\t\t<string>mysite</string>") {
+		t.Errorf("sidebar label missing from the profile")
+	}
+	if !strings.Contains(got, "contact@mysite.test") {
+		t.Errorf("address missing from the profile")
+	}
+}
+
+func TestSenderNameFallsBackToTheLabel(t *testing.T) {
+	profile, err := mobileconfig.Build(mobileconfig.Options{
+		Accounts: []mobileconfig.Account{{
+			Name: "acct", DisplayName: "My Account", Address: "a@b.test",
+			IMAPHost: "localhost", IMAPPort: 1993, SMTPHost: "localhost", SMTPPort: 1465,
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(profile), "<key>EmailAccountName</key>\n\t\t\t<string>My Account</string>") {
+		t.Error("with no sender name set, the profile should fall back to the label")
+	}
+}

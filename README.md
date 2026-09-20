@@ -126,6 +126,8 @@ composed them.
 | `ferry account add <name>` | Add a Resend account; prints the app password once |
 | `ferry account list` | Show configured accounts |
 | `ferry account passwd <name>` | Issue a new app password |
+| `ferry account set-key <name>` | Replace the Resend API key (rotation, recovery) |
+| `ferry account identity <name>` | Set the From address and sender name |
 | `ferry account refresh <name>` | Re-read verified sending domains from Resend |
 | `ferry account webhook <name>` | Store the webhook signing secret |
 | `ferry account remove <name>` | Remove an account and its local mail |

@@ -27,6 +27,21 @@ which is what these ports have meant since 993 and 465 were assigned.
 first run, and until you trust it, clients will refuse the connection or warn
 about it.
 
+## How your mail appears to recipients
+
+The From address and the name beside it come from Ferry, not from the client:
+
+```bash
+ferry account identity mysite --display-name "Acme Support" --address contact@example.com
+```
+
+An account configured from a profile is managed, and most clients will not let
+you edit those fields themselves, so set them here and reinstall the profile.
+
+You do not need this to send from a *different* address occasionally: any
+address on a verified domain is accepted, so add aliases in the client and
+pick between them when composing. `identity` sets the default.
+
 ## Trusting the certificate
 
 ```bash

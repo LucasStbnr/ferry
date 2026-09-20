@@ -13,9 +13,13 @@ import (
 
 // Account is one Resend account, exposed as one IMAP/SMTP login.
 type Account struct {
-	ID           int64
-	Name         string
-	Address      string
+	ID   int64
+	Name string
+	// Address is the From address a mail client is configured with.
+	Address string
+	// DisplayName is the name shown beside that address on outgoing mail.
+	// Empty means the client falls back to the account name.
+	DisplayName  string
 	Domains      []string
 	PasswordHash string
 	CreatedAt    time.Time
@@ -61,7 +65,7 @@ func scanAccount(row interface{ Scan(...any) error }) (*Account, error) {
 		domains string
 		created int64
 	)
-	if err := row.Scan(&a.ID, &a.Name, &a.Address, &domains, &a.PasswordHash, &created); err != nil {
+	if err := row.Scan(&a.ID, &a.Name, &a.Address, &a.DisplayName, &domains, &a.PasswordHash, &created); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -72,7 +76,7 @@ func scanAccount(row interface{ Scan(...any) error }) (*Account, error) {
 	return &a, nil
 }
 
-const accountCols = `id, name, address, domains, password_hash, created_at`
+const accountCols = `id, name, address, display_name, domains, password_hash, created_at`
 
 // AccountByName looks an account up, returning ErrNotFound if it is absent.
 func (db *DB) AccountByName(ctx context.Context, name string) (*Account, error) {
@@ -132,6 +136,16 @@ func (db *DB) SetDomains(ctx context.Context, name string, domains []string) err
 // SetAddress records the account's primary From address.
 func (db *DB) SetAddress(ctx context.Context, name, address string) error {
 	res, err := db.sql.ExecContext(ctx, `UPDATE accounts SET address = ? WHERE name = ?`, address, name)
+	if err != nil {
+		return err
+	}
+	return mustAffect(res, fmt.Errorf("%w: account %q", ErrNotFound, name))
+}
+
+// SetDisplayName records the name shown beside the address on outgoing mail.
+func (db *DB) SetDisplayName(ctx context.Context, name, displayName string) error {
+	res, err := db.sql.ExecContext(ctx,
+		`UPDATE accounts SET display_name = ? WHERE name = ?`, displayName, name)
 	if err != nil {
 		return err
 	}

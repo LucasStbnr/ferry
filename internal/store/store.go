@@ -26,7 +26,10 @@ import (
 var schemaSQL string
 
 // schemaVersion is bumped whenever schema.sql or a migration changes.
-const schemaVersion = 1
+//
+//	1  initial schema
+//	2  accounts.display_name, the name a client shows on outgoing mail
+const schemaVersion = 2
 
 // Common errors.
 var (
@@ -78,6 +81,11 @@ func Open(ctx context.Context, dbPath, blobDir string) (*DB, error) {
 	return db, nil
 }
 
+// SchemaSQL returns the embedded schema. It exists so the migration test can
+// build an older database from the current definition rather than carrying a
+// second copy that drifts.
+func SchemaSQL() string { return schemaSQL }
+
 // Close releases the database handle.
 func (db *DB) Close() error { return db.sql.Close() }
 
@@ -111,7 +119,16 @@ func (db *DB) migrate(ctx context.Context) error {
 				return fmt.Errorf("store: apply schema: %w", err)
 			}
 		}
-		// Future migrations run here, guarded by `if have < N`.
+		// Migrations are cumulative and guarded, so a database created at any
+		// earlier version reaches the current one by running each step in
+		// turn. A fresh database has the whole schema already and skips them.
+		if have > 0 && have < 2 {
+			if _, err := tx.ExecContext(ctx,
+				`ALTER TABLE accounts ADD COLUMN display_name TEXT NOT NULL DEFAULT ''`); err != nil {
+				return fmt.Errorf("store: migrate to schema 2: %w", err)
+			}
+		}
+
 		_, err := tx.ExecContext(ctx,
 			`INSERT INTO meta(key, value) VALUES ('schema_version', ?)
 			 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,

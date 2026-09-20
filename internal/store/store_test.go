@@ -2,10 +2,14 @@ package store_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	_ "modernc.org/sqlite"
 
 	"github.com/LucasStbnr/ferry/internal/store"
 )
@@ -361,5 +365,76 @@ func TestGCBlobsRemovesUnreferencedFiles(t *testing.T) {
 	}
 	if !as.HasBlob(msgs[0].BlobHash) {
 		t.Fatal("gc removed a referenced blob")
+	}
+}
+
+// TestMigrationFromV1 proves an existing database upgrades in place. Ferry is
+// installed and running on real machines, so a schema change that only works
+// on a fresh database is a schema change that loses somebody's mail.
+func TestMigrationFromV1(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "ferry.db")
+
+	// Build a v1 database by hand: the current schema minus what version 2
+	// added, stamped with the old version number.
+	raw, err := sql.Open("sqlite", "file:"+dbPath+"?_pragma=foreign_keys(ON)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	v1 := strings.Replace(store.SchemaSQL(),
+		"    display_name  TEXT    NOT NULL DEFAULT '',  -- name a client shows on outgoing mail\n", "", 1)
+	if strings.Contains(v1, "display_name") {
+		t.Fatal("failed to strip the v2 column from the schema")
+	}
+	if _, err := raw.ExecContext(ctx, v1); err != nil {
+		t.Fatalf("apply v1 schema: %v", err)
+	}
+	if _, err := raw.ExecContext(ctx,
+		`INSERT INTO meta(key, value) VALUES ('schema_version', '1')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.ExecContext(ctx,
+		`INSERT INTO accounts(name, address, domains, password_hash, created_at)
+		 VALUES ('existing', 'hello@example.test', 'example.test', 'hash', 1)`); err != nil {
+		t.Fatal(err)
+	}
+	raw.Close()
+
+	// Opening with the current build must migrate it, not reject it.
+	db, err := store.Open(ctx, dbPath, filepath.Join(dir, "blobs"))
+	if err != nil {
+		t.Fatalf("open a v1 database: %v", err)
+	}
+	defer db.Close()
+
+	acct, err := db.AccountByName(ctx, "existing")
+	if err != nil {
+		t.Fatalf("the existing account did not survive: %v", err)
+	}
+	if acct.Address != "hello@example.test" || len(acct.Domains) != 1 {
+		t.Errorf("account = %+v", acct)
+	}
+	if acct.DisplayName != "" {
+		t.Errorf("display name = %q, want empty for a migrated row", acct.DisplayName)
+	}
+
+	// The new column works.
+	if err := db.SetDisplayName(ctx, "existing", "Existing Account"); err != nil {
+		t.Fatalf("SetDisplayName after migration: %v", err)
+	}
+	if acct, _ = db.AccountByName(ctx, "existing"); acct.DisplayName != "Existing Account" {
+		t.Errorf("display name = %q", acct.DisplayName)
+	}
+
+	// And re-opening is a no-op rather than a second migration.
+	db.Close()
+	db2, err := store.Open(ctx, dbPath, filepath.Join(dir, "blobs"))
+	if err != nil {
+		t.Fatalf("reopen after migrating: %v", err)
+	}
+	defer db2.Close()
+	if err := db2.Check(ctx); err != nil {
+		t.Errorf("integrity after migration: %v", err)
 	}
 }

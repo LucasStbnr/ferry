@@ -94,6 +94,7 @@ password once and stores it in the keychain.`,
 				profileAccounts = append(profileAccounts, mobileconfig.Account{
 					Name:        a.Name,
 					DisplayName: a.Name,
+					SenderName:  a.DisplayName,
 					Address:     address,
 					Password:    passwords[a.Name],
 					IMAPHost:    imapHost,

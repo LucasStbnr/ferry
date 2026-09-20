@@ -28,6 +28,8 @@ func newAccountCmd(e *env) *cobra.Command {
 		newAccountListCmd(e),
 		newAccountRemoveCmd(e),
 		newAccountPasswdCmd(e),
+		newAccountSetKeyCmd(e),
+		newAccountIdentityCmd(e),
 		newAccountRefreshCmd(e),
 		newAccountWebhookCmd(e),
 	)
@@ -36,10 +38,11 @@ func newAccountCmd(e *env) *cobra.Command {
 
 func newAccountAddCmd(e *env) *cobra.Command {
 	var (
-		apiKey   string
-		address  string
-		password string
-		noSync   bool
+		apiKey      string
+		address     string
+		displayName string
+		password    string
+		noSync      bool
 	)
 	cmd := &cobra.Command{
 		Use:   "add <name>",
@@ -76,17 +79,19 @@ is added, because Resend's raw-message and attachment links expire.`,
 			}
 
 			created, err := e.mgr.Add(ctx, account.AddOptions{
-				Name:     name,
-				APIKey:   apiKey,
-				Address:  address,
-				Password: password,
+				Name:        name,
+				APIKey:      apiKey,
+				Address:     address,
+				DisplayName: displayName,
+				Password:    password,
 			})
 			if err != nil {
 				return err
 			}
 
 			e.printf("Account %q added.\n\n", name)
-			e.printf("  Email address   %s\n", orNone(created.Account.Address))
+			e.printf("  Sends as        %s\n",
+				formatSender(created.Account.DisplayName, created.Account.Address, name))
 			if len(created.Domains) > 0 {
 				e.printf("  Sending domains %s\n", strings.Join(created.Domains, ", "))
 			} else {
@@ -112,6 +117,7 @@ is added, because Resend's raw-message and attachment links expire.`,
 	}
 	cmd.Flags().StringVar(&apiKey, "api-key", "", "Resend API key (prompted for if omitted, which keeps it out of shell history)")
 	cmd.Flags().StringVar(&address, "address", "", "email address to use as From (default: hello@<first verified domain>)")
+	cmd.Flags().StringVar(&displayName, "display-name", "", `name shown beside the address on outgoing mail, e.g. "Acme Support"`)
 	cmd.Flags().StringVar(&password, "password", "", "set the app password instead of generating one")
 	cmd.Flags().BoolVar(&noSync, "no-reload", false, "do not tell a running daemon about the new account")
 	return cmd
@@ -234,6 +240,64 @@ so update your mail client (or, on macOS, reinstall the profile from
 		},
 	}
 	cmd.Flags().StringVar(&password, "password", "", "set this password instead of generating one")
+	return cmd
+}
+
+func newAccountSetKeyCmd(e *env) *cobra.Command {
+	var apiKey string
+	cmd := &cobra.Command{
+		Use:     "set-key <name>",
+		Aliases: []string{"key"},
+		Short:   "Replace an account's Resend API key",
+		Long: `Stores a new Resend API key for an existing account.
+
+Use this to rotate a key, or to restore one that was lost: a key revoked in
+Resend, or a credential store that was cleared. Nothing else about the account
+changes: the mail already downloaded, the folders, the read state and the app
+password your mail client uses all stay exactly as they are, so there is no
+need to reconfigure the client.
+
+The key is verified against Resend before it is stored, and the account's
+verified sending domains are refreshed at the same time.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			if err := e.open(ctx); err != nil {
+				return err
+			}
+			defer e.close()
+
+			name := args[0]
+			if _, err := e.db.AccountByName(ctx, name); err != nil {
+				return err
+			}
+			if apiKey == "" {
+				var err error
+				if apiKey, err = promptSecret(e, "Resend API key: "); err != nil {
+					return err
+				}
+			}
+			if strings.TrimSpace(apiKey) == "" {
+				return errors.New("no API key given")
+			}
+
+			domains, err := e.mgr.SetAPIKey(ctx, name, apiKey)
+			if err != nil {
+				return err
+			}
+
+			e.printf("API key updated for %q.\n", name)
+			if len(domains) > 0 {
+				e.printf("Sending domains: %s\n", strings.Join(domains, ", "))
+			} else {
+				e.printf("No verified sending domains; sending will be refused until one is verified.\n")
+			}
+			e.printf("\nNothing else changed; your mail client keeps working with the same password.\n")
+			notifyDaemonReload(ctx, e)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&apiKey, "api-key", "", "the new API key (prompted for if omitted)")
 	return cmd
 }
 
@@ -400,4 +464,80 @@ func humanBytes(n int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+func newAccountIdentityCmd(e *env) *cobra.Command {
+	var (
+		address     string
+		displayName string
+	)
+	cmd := &cobra.Command{
+		Use:   "identity <name>",
+		Short: "Change the From address and sender name on outgoing mail",
+		Long: `Sets how your mail appears to the people who receive it: the From address,
+and the name shown beside it.
+
+  ferry account identity mysite --address contact@example.com
+  ferry account identity mysite --display-name "Acme Support"
+
+The address must be on a domain the account can send from, since the SMTP
+server checks that on every message.
+
+A mail client configured from a profile treats these settings as managed and
+will not let you edit them itself, so change them here and reinstall the
+profile:
+
+  ferry mail-profile --open
+
+Sending from a different address occasionally does not need this at all: any
+address on a verified domain is accepted, so you can add aliases in the client
+and pick between them when composing.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			if err := e.open(ctx); err != nil {
+				return err
+			}
+			defer e.close()
+
+			name := args[0]
+			if address == "" && displayName == "" {
+				acct, err := e.db.AccountByName(ctx, name)
+				if err != nil {
+					return err
+				}
+				e.printf("Outgoing mail from %q currently appears as:\n\n", name)
+				e.printf("  From  %s\n", formatSender(acct.DisplayName, acct.Address, acct.Name))
+				e.printf("\nChange it with --address and --display-name.\n")
+				return nil
+			}
+
+			acct, err := e.mgr.SetIdentity(ctx, name, address, displayName)
+			if err != nil {
+				return err
+			}
+			e.printf("Outgoing mail from %q will now appear as:\n\n", name)
+			e.printf("  From  %s\n", formatSender(acct.DisplayName, acct.Address, acct.Name))
+			e.printf("\nYour mail client keeps its current settings until it is reconfigured.\n")
+			if runtime.GOOS == "darwin" {
+				e.printf("For Apple Mail, run `ferry mail-profile --open` and reinstall the profile.\n")
+			}
+			notifyDaemonReload(ctx, e)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&address, "address", "", "the From address, e.g. contact@example.com")
+	cmd.Flags().StringVar(&displayName, "display-name", "", `the name shown beside the address, e.g. "Acme Support"`)
+	return cmd
+}
+
+// formatSender renders a From header the way a recipient sees it.
+func formatSender(displayName, address, fallback string) string {
+	if displayName == "" {
+		displayName = fallback
+	}
+	if address == "" {
+		return displayName
+	}
+	return fmt.Sprintf("%s <%s>", displayName, address)
 }
