@@ -108,9 +108,16 @@ func (u *user) list() []*mailbox {
 	return out
 }
 
-// canonical matches the store's INBOX folding, so "inbox" and "INBOX" are one
-// mailbox as RFC 3501 requires.
+// canonical normalises a mailbox name as it arrives from a client.
+//
+// It folds INBOX, which RFC 3501 requires to be case-insensitive, and it
+// strips a leading hierarchy delimiter. The second part is not in any RFC: a
+// client configured with a path prefix of "/" (or with an empty prefix, which
+// Apple Mail treats the same way) asks for "/Trash" rather than "Trash".
+// Rejecting those is technically correct and practically useless, because the
+// visible symptom is that deleting a message does nothing at all.
 func canonical(name string) string {
+	name = strings.TrimLeft(name, string(store.Delim))
 	if strings.EqualFold(name, store.Inbox) {
 		return store.Inbox
 	}

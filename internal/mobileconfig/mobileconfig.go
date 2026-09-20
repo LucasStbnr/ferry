@@ -26,8 +26,11 @@ import (
 type Account struct {
 	// Name is the account name, used as the IMAP and SMTP username.
 	Name string
-	// DisplayName is what Mail shows in the sidebar.
+	// DisplayName is the label Mail shows for the account in its sidebar.
 	DisplayName string
+	// SenderName is the name recipients see beside the address on mail sent
+	// from this account. Empty falls back to DisplayName.
+	SenderName string
 	// Address is the From address.
 	Address string
 	// Password, when set, is embedded in the profile so Mail does not prompt.
@@ -98,6 +101,13 @@ func Build(opts Options) ([]byte, error) {
 		if display == "" {
 			display = a.Name
 		}
+		// EmailAccountName is the sender's name on outgoing mail, which is
+		// not the same thing as the label in Mail's sidebar even though both
+		// default to the account name.
+		sender := a.SenderName
+		if sender == "" {
+			sender = display
+		}
 		p := dict{
 			"PayloadType":        "com.apple.mail.managed",
 			"PayloadVersion":     1,
@@ -107,7 +117,7 @@ func Build(opts Options) ([]byte, error) {
 			"PayloadDescription": "Ferry account for " + a.Address,
 
 			"EmailAccountDescription": display,
-			"EmailAccountName":        display,
+			"EmailAccountName":        sender,
 			"EmailAccountType":        "EmailTypeIMAP",
 			"EmailAddress":            a.Address,
 
@@ -116,7 +126,6 @@ func Build(opts Options) ([]byte, error) {
 			"IncomingMailServerUseSSL":         true,
 			"IncomingMailServerUsername":       a.Name,
 			"IncomingMailServerAuthentication": "EmailAuthPassword",
-			"IncomingMailServerIMAPPathPrefix": "",
 
 			"OutgoingMailServerHostName":       a.SMTPHost,
 			"OutgoingMailServerPortNumber":     a.SMTPPort,
@@ -135,6 +144,13 @@ func Build(opts Options) ([]byte, error) {
 			"allowMailDrop":             false,
 			"disableMailRecentsSyncing": true,
 		}
+		// IncomingMailServerIMAPPathPrefix is deliberately absent. Ferry's
+		// mailboxes live at the root of the personal namespace, and setting
+		// the key to an empty string is not the same as leaving it out: Mail
+		// then builds paths as prefix + delimiter + name and asks for
+		// "/Trash", which no server has. Deletes fail silently when that
+		// happens, because Mail cannot find the mailbox to move them to.
+
 		if a.Password != "" {
 			p["IncomingPassword"] = a.Password
 			p["OutgoingPassword"] = a.Password

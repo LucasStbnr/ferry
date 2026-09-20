@@ -628,3 +628,69 @@ func TestUIDFetchAndUIDSearch(t *testing.T) {
 		t.Fatalf("UID SEARCH result = %v, want uid 2", uids)
 	}
 }
+
+// TestMailboxNamesWithLeadingDelimiter reproduces the bug that made deleting
+// mail silently do nothing in Apple Mail.
+//
+// Mail builds mailbox paths as prefix + delimiter + name. With an empty path
+// prefix that yields "/Trash", the server answered NONEXISTENT, and because
+// Mail's delete is a move to Trash it failed with no visible error at all;
+// the message simply stayed where it was.
+func TestMailboxNamesWithLeadingDelimiter(t *testing.T) {
+	f := newFixture(t, "acct")
+	f.put(t, "acct", "INBOX", "deleteme", "body")
+	c := f.dial(t, "acct")
+
+	// STATUS is what Mail uses to discover the special folders.
+	for _, name := range []string{"/Trash", "/Sent", "/Drafts", "/Archive", "/Junk"} {
+		if _, err := c.Status(name, &imap.StatusOptions{NumMessages: true}).Wait(); err != nil {
+			t.Errorf("STATUS %s: %v", name, err)
+		}
+	}
+
+	// And the delete itself: select INBOX, move to "/Trash".
+	if _, err := c.Select("INBOX", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Move(imap.SeqSetNum(1), "/Trash").Wait(); err != nil {
+		t.Fatalf("MOVE to /Trash: %v", err)
+	}
+	sel, err := c.Select("/Trash", nil).Wait()
+	if err != nil {
+		t.Fatalf("SELECT /Trash: %v", err)
+	}
+	if sel.NumMessages != 1 {
+		t.Fatalf("Trash has %d messages after the move, want 1", sel.NumMessages)
+	}
+
+	// The message must really be gone from INBOX, not copied.
+	if sel, err = c.Select("/INBOX", nil).Wait(); err != nil {
+		t.Fatal(err)
+	}
+	if sel.NumMessages != 0 {
+		t.Fatalf("INBOX still has %d messages after the move", sel.NumMessages)
+	}
+}
+
+func TestLeadingDelimiterOnEveryMailboxCommand(t *testing.T) {
+	f := newFixture(t, "acct")
+	c := f.dial(t, "acct")
+
+	if err := c.Create("/Clients", nil).Wait(); err != nil {
+		t.Fatalf("CREATE /Clients: %v", err)
+	}
+	// It must be created as "Clients", not as an empty-named child.
+	boxes, err := c.List("", "Clients", nil).Collect()
+	if err != nil || len(boxes) != 1 {
+		t.Fatalf("list after CREATE /Clients = %+v, %v", boxes, err)
+	}
+	if err := c.Subscribe("/Clients").Wait(); err != nil {
+		t.Errorf("SUBSCRIBE /Clients: %v", err)
+	}
+	if err := c.Rename("/Clients", "/Customers", nil).Wait(); err != nil {
+		t.Errorf("RENAME /Clients: %v", err)
+	}
+	if err := c.Delete("/Customers").Wait(); err != nil {
+		t.Errorf("DELETE /Customers: %v", err)
+	}
+}
