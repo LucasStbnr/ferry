@@ -8,7 +8,7 @@ talk to Ferry, and nothing here is specific to a particular program.
 `ferry account add` prints everything you need, and `ferry status` prints it
 again later:
 
-| | Incoming (IMAP) | Outgoing (SMTP) |
+| Setting | Incoming (IMAP) | Outgoing (SMTP) |
 |---|---|---|
 | Server | `localhost` | `localhost` |
 | Port | `1993` | `1465` |

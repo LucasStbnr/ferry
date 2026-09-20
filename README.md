@@ -242,7 +242,7 @@ the service at all.
 These come from Resend, not from Ferry, and Ferry reports them rather than
 hiding them.
 
-| | |
+| Limit | What it means |
 |---|---|
 | **Send quota** | Free tier: 100/day, 3,000/month. Over quota, sending fails with a permanent SMTP error naming the quota. |
 | **Recipients** | 50 per message, counting To, Cc and Bcc. |
