@@ -8,7 +8,6 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -287,7 +286,9 @@ func (r *Receiver) handle(ctx context.Context, account string, event *Event) {
 func (r *Receiver) fileNotice(ctx context.Context, account string, event *Event) error {
 	var data EmailData
 	if err := json.Unmarshal(event.Data, &data); err != nil {
-		return fmt.Errorf("webhook: parse %s payload: %w", event.Type, err)
+		// Neither the event type nor the decoder's message goes into the
+		// error: the first is payload data and the second quotes the input.
+		return fmt.Errorf("webhook: %s payload could not be parsed", eventLabel(event.Type))
 	}
 
 	r.noticeMu.Lock()
@@ -350,8 +351,11 @@ func (r *Receiver) fileNotice(ctx context.Context, account string, event *Event)
 	if r.opts.Notifier != nil {
 		r.opts.Notifier(account, mbox.ID)
 	}
-	r.log.Info("filed delivery notice",
-		"account", account, "event", eventLabel(event.Type), "email_id", safeID(data.ID))
+	// The Resend id is deliberately not logged. It is already in the notice
+	// itself, in both the Message-ID and the body, which is where anyone
+	// correlating with Resend's dashboard will look, so putting it here as
+	// well only adds a second copy of payload data to the log.
+	r.log.Info("filed delivery notice", "account", account, "event", eventLabel(event.Type))
 	return nil
 }
 
@@ -394,18 +398,6 @@ func eventLabel(t string) string {
 	default:
 		return "other"
 	}
-}
-
-// safeIDPattern is what a Resend identifier looks like. An id that does not
-// match is replaced rather than logged, so the log holds either a real
-// identifier or a marker, never arbitrary bytes.
-var safeIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
-
-func safeID(id string) string {
-	if safeIDPattern.MatchString(id) {
-		return id
-	}
-	return "(invalid)"
 }
 
 func noticeMessageID(eventType, emailID string) string {
