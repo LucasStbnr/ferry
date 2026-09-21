@@ -17,6 +17,7 @@ import (
 	"github.com/LucasStbnr/ferry/internal/mailmime"
 	"github.com/LucasStbnr/ferry/internal/resend"
 	"github.com/LucasStbnr/ferry/internal/store"
+	"github.com/LucasStbnr/ferry/internal/tlsutil"
 )
 
 // DefaultMaxMessageBytes caps a submission. Resend's own attachment limit is
@@ -114,7 +115,7 @@ func (s *Server) Listen(ctx context.Context) (net.Listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("smtpd: listen on %s: %w", s.opts.Addr, err)
 	}
-	return tls.NewListener(ln, s.opts.TLSConfig), nil
+	return tlsutil.NewListener(ctx, ln, s.opts.TLSConfig, tlsutil.HandshakeTimeout), nil
 }
 
 // Serve accepts connections on an already-TLS-wrapped listener.

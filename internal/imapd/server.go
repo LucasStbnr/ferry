@@ -15,6 +15,7 @@ import (
 	"github.com/emersion/go-imap/v2/imapserver"
 
 	"github.com/LucasStbnr/ferry/internal/store"
+	"github.com/LucasStbnr/ferry/internal/tlsutil"
 )
 
 // DefaultAppendLimit caps a single APPEND. Resend will not accept an outgoing
@@ -193,7 +194,7 @@ func (s *Server) Listen(ctx context.Context) (net.Listener, error) {
 	if err != nil {
 		return nil, fmt.Errorf("imapd: listen on %s: %w", s.opts.Addr, err)
 	}
-	return tls.NewListener(ln, s.opts.TLSConfig), nil
+	return tlsutil.NewListener(ctx, ln, s.opts.TLSConfig, tlsutil.HandshakeTimeout), nil
 }
 
 // Close stops the server and drops every connection.
