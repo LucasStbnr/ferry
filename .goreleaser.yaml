@@ -50,12 +50,16 @@ sboms:
 signs:
   # Keyless signing through Sigstore: the signature is verifiable against the
   # GitHub Actions identity that produced it, with no key to manage.
+  #
+  # One bundle carries the signature, the certificate and the transparency log
+  # proof together. Current cosign writes that format by default and ignores
+  # --output-signature and --output-certificate, which leaves --bundle unset
+  # and the signing step fails on an empty path rather than falling back.
   - cmd: cosign
-    certificate: "${artifact}.pem"
+    signature: "${artifact}.bundle"
     args:
       - sign-blob
-      - "--output-certificate=${certificate}"
-      - "--output-signature=${signature}"
+      - "--bundle=${signature}"
       - "${artifact}"
       - "--yes"
     artifacts: checksum
@@ -160,6 +164,16 @@ release:
     Docker:
 
         docker pull ghcr.io/lucasstbnr/ferry:{{ .Version }}
+
+    ## Verify
+
+    `checksums.txt` is signed with Sigstore, keyless, against this repository's
+    release workflow. There is no key to fetch:
+
+        cosign verify-blob checksums.txt \
+          --bundle checksums.txt.bundle \
+          --certificate-identity-regexp '^https://github.com/LucasStbnr/ferry/' \
+          --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
     **Full changelog**: https://github.com/LucasStbnr/ferry/compare/{{ .PreviousTag }}...{{ .Tag }}
 
