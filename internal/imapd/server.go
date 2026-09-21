@@ -95,6 +95,7 @@ func New(opts Options) (*Server, error) {
 		imap.CapIdle:         {},
 		imap.CapUnselect:     {},
 		imap.CapSpecialUse:   {},
+		imap.CapChildren:     {},
 		imap.CapBinary:       {},
 	}
 

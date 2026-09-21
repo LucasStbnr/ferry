@@ -163,8 +163,26 @@ func (u *user) listMailboxes(w *imapserver.ListWriter, ref string, patterns []st
 		})
 	}
 
+	all := u.list()
+
+	// \HasChildren and \HasNoChildren are not decoration. A client that asks
+	// for the mailbox list and gets no child information cannot tell a leaf
+	// from an unexplored parent, and Apple Mail responds to that by distrusting
+	// the listing and falling back to the folder names it ships with, creating
+	// its own "Deleted Messages" beside the \Trash it was offered.
+	hasChildren := make(map[string]bool, len(all))
+	for _, mbox := range all {
+		prefix := mbox.name + string(store.Delim)
+		for _, other := range all {
+			if strings.HasPrefix(other.name, prefix) {
+				hasChildren[mbox.name] = true
+				break
+			}
+		}
+	}
+
 	var out []imap.ListData
-	for _, mbox := range u.list() {
+	for _, mbox := range all {
 		matched := false
 		for _, pattern := range patterns {
 			if imapserver.MatchList(mbox.name, store.Delim, ref, pattern) {
@@ -178,6 +196,7 @@ func (u *user) listMailboxes(w *imapserver.ListWriter, ref string, patterns []st
 
 		mbox.mu.Lock()
 		subscribed := mbox.subscribed
+		specialUse := mbox.specialUse
 		data := imap.ListData{Mailbox: mbox.name, Delim: store.Delim, Attrs: mbox.attrs()}
 		if options.ReturnStatus != nil {
 			data.Status = mbox.statusDataLocked(options.ReturnStatus)
@@ -187,8 +206,16 @@ func (u *user) listMailboxes(w *imapserver.ListWriter, ref string, patterns []st
 		if options.SelectSubscribed && !subscribed {
 			continue
 		}
-		if options.SelectSpecialUse && len(data.Attrs) == 0 {
+		// Ask the mailbox, not the length of the attribute list: every mailbox
+		// now carries a child attribute, so an empty list no longer means
+		// "no special use".
+		if options.SelectSpecialUse && specialUse == "" {
 			continue
+		}
+		if hasChildren[mbox.name] {
+			data.Attrs = append(data.Attrs, imap.MailboxAttrHasChildren)
+		} else {
+			data.Attrs = append(data.Attrs, imap.MailboxAttrHasNoChildren)
 		}
 		if subscribed {
 			data.Attrs = append(data.Attrs, imap.MailboxAttrSubscribed)
