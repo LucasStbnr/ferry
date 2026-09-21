@@ -232,6 +232,8 @@ func (e *env) checkAccounts(ctx context.Context, repair bool) []check {
 		}
 		checks = append(checks, c)
 
+		checks = append(checks, e.checkDuplicateSpecialUse(ctx, as, repair)...)
+
 		if repair {
 			removed, freed, err := as.GCBlobs(ctx)
 			gc := check{name: "Account " + a.Name + " storage"}
