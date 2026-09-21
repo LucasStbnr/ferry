@@ -104,16 +104,20 @@ homebrew_casks:
       name: goreleaser
       email: noreply@github.com
 
-    hooks:
-      post:
-        # The release binaries are not notarised, so macOS quarantines them and
-        # Gatekeeper refuses to run ferry at all. Clearing the attribute on a
-        # binary Homebrew just downloaded over TLS, whose checksum it verified,
-        # is what every unsigned CLI cask does.
-        install: |
-          if system_command("/usr/bin/xattr", args: ["-h"], print_stderr: false).exit_status.zero?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/ferry"]
-          end
+    # The release binaries are not notarised, so macOS quarantines them and
+    # Gatekeeper refuses to run ferry at all. Clearing the attribute on a
+    # binary Homebrew just downloaded over TLS, whose checksum it verified, is
+    # what every unsigned CLI cask does.
+    #
+    # Written out here rather than through `hooks.post.install`, because that
+    # still emits Homebrew's `postflight`, which has been renamed to
+    # `postflight_steps` and warns on every command run against the cask.
+    custom_block: |
+      postflight_steps do
+        run "/usr/bin/xattr",
+            args:         ["-dr", "com.apple.quarantine", "{{ "{{staged_path}}" }}/ferry"],
+            must_succeed: false
+      end
 
     # Ferry registers its own LaunchAgent through `ferry service install`, so
     # uninstalling has to unload it. Homebrew does this before removing the
