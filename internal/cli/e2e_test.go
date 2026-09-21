@@ -366,7 +366,7 @@ func TestEndToEnd(t *testing.T) {
 
 	t.Run("mail profile is written", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "ferry.mobileconfig")
-		h.mustRun("mail-profile", "-o", path)
+		h.mustRun("mail-profile", testAccount, "-o", path)
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -430,5 +430,67 @@ func TestVersion(t *testing.T) {
 	out := h.mustRun("version")
 	if !strings.HasPrefix(out, "ferry ") {
 		t.Fatalf("version output = %q", out)
+	}
+}
+
+// TestMailProfilePerAccount covers the bug where adding a second account tore
+// down the first.
+//
+// Every account used to go into one profile with a fixed identifier.
+// Installing a profile whose identifier already exists replaces it, and macOS
+// removes the old one first, taking its mail accounts with it. So generating
+// the profile again after adding an account removed the original account from
+// Mail and asked for every password afresh.
+func TestMailProfilePerAccount(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end test builds the binary")
+	}
+	h := newHarness(t)
+	h.addAccount(testAccount)
+	h.addAccount("second-fixture")
+
+	out := h.mustRun("mail-profile")
+	if !strings.Contains(out, "ferry-"+testAccount+".mobileconfig") ||
+		!strings.Contains(out, "ferry-second-fixture.mobileconfig") {
+		t.Fatalf("expected one profile per account:\n%s", out)
+	}
+
+	ids := map[string]string{}
+	for _, name := range []string{testAccount, "second-fixture"} {
+		path := filepath.Join(h.dataDir, "ferry-"+name+".mobileconfig")
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		body := string(data)
+		// The identifier must be unique per account, or installing one
+		// replaces the other.
+		want := "<string>io.github.lucasstbnr.ferry." + name + "</string>"
+		if !strings.Contains(body, want) {
+			t.Errorf("%s does not carry its own profile identifier", name)
+		}
+		// And it must describe only its own account.
+		other := testAccount
+		if name == testAccount {
+			other = "second-fixture"
+		}
+		if strings.Contains(body, "io.github.lucasstbnr.ferry."+other) {
+			t.Errorf("%s's profile also configures %s", name, other)
+		}
+		ids[name] = want
+	}
+	if ids[testAccount] == ids["second-fixture"] {
+		t.Fatal("both profiles share an identifier")
+	}
+
+	// -o names one file, so it cannot stand in for several.
+	if out, err := h.run("mail-profile", "-o", filepath.Join(t.TempDir(), "x.mobileconfig")); err == nil {
+		t.Fatalf("-o with two accounts should be refused:\n%s", out)
+	}
+	// With one account named, it is fine.
+	single := filepath.Join(t.TempDir(), "one.mobileconfig")
+	h.mustRun("mail-profile", testAccount, "-o", single)
+	if _, err := os.Stat(single); err != nil {
+		t.Fatalf("naming one account with -o should work: %v", err)
 	}
 }

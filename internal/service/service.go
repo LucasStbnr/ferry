@@ -22,8 +22,13 @@ import (
 	"strings"
 )
 
-// Label is the service identifier, used for the launchd label and the systemd
-// unit name.
+// Label identifies the service to launchd, and namespaces the configuration
+// profiles Ferry generates.
+//
+// Reverse-DNS under io.github is the convention for a project hosted on
+// GitHub that owns no domain of its own. It names the project, never the
+// person running it: an identifier taken from one user's domain would be both
+// wrong here and a detail of theirs shipped in everyone else's installation.
 const Label = "io.github.lucasstbnr.ferry"
 
 // ErrUnsupported is returned on a platform with no supported supervisor.

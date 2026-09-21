@@ -25,7 +25,7 @@ func newMailProfileCmd(e *env) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "mail-profile [account...]",
 		Short: "Write an Apple configuration profile (macOS and iOS only)",
-		Long: `Writes a .mobileconfig file that sets up Apple Mail for Ferry's accounts:
+		Long: `Writes a .mobileconfig file per account that sets up Apple Mail:
 the right hostname, both ports, SSL on both, the username, and Ferry's CA
 certificate so there is no certificate warning.
 
@@ -81,7 +81,23 @@ password once and stores it in the keychain.`,
 				return fmt.Errorf("smtp address: %w", err)
 			}
 
-			var profileAccounts []mobileconfig.Account
+			type built struct {
+				account string
+				path    string
+				address string
+				hasPass bool
+				data    []byte
+			}
+			var profiles []built
+
+			// One profile per account, each with its own identifier.
+			//
+			// A single profile holding every account looks tidier and is a
+			// trap: installing a profile whose identifier already exists
+			// replaces it, and macOS removes the old one first, taking its
+			// mail accounts with it. Adding a second account would therefore
+			// tear down the first and ask for every password again. Separate
+			// identifiers keep each account independent.
 			for i := range accounts {
 				a := &accounts[i]
 				if len(wanted) > 0 && !wanted[a.Name] {
@@ -91,63 +107,86 @@ password once and stores it in the keychain.`,
 				if address == "" {
 					address = a.Name + "@localhost"
 				}
-				profileAccounts = append(profileAccounts, mobileconfig.Account{
-					Name:        a.Name,
-					DisplayName: a.Name,
-					SenderName:  a.DisplayName,
-					Address:     address,
-					Password:    passwords[a.Name],
-					IMAPHost:    imapHost,
-					IMAPPort:    imapPort,
-					SMTPHost:    smtpHost,
-					SMTPPort:    smtpPort,
+				profile, err := mobileconfig.Build(mobileconfig.Options{
+					Identifier:  "io.github.lucasstbnr.ferry." + a.Name,
+					DisplayName: "Ferry (" + a.Name + ")",
+					Description: "Configures this mail account to read " + address + " through Ferry.",
+					CACertPEM:   bundle.CACertPEM,
+					Accounts: []mobileconfig.Account{{
+						Name:        a.Name,
+						DisplayName: a.Name,
+						SenderName:  a.DisplayName,
+						Address:     address,
+						Password:    passwords[a.Name],
+						IMAPHost:    imapHost,
+						IMAPPort:    imapPort,
+						SMTPHost:    smtpHost,
+						SMTPPort:    smtpPort,
+					}},
+				})
+				if err != nil {
+					return err
+				}
+				profiles = append(profiles, built{
+					account: a.Name,
+					address: address,
+					hasPass: passwords[a.Name] != "",
+					data:    profile,
 				})
 			}
-			if len(profileAccounts) == 0 {
+			if len(profiles) == 0 {
 				return fmt.Errorf("no matching accounts")
 			}
 
-			profile, err := mobileconfig.Build(mobileconfig.Options{
-				Identifier:  "io.github.lucasstbnr.ferry",
-				DisplayName: "Ferry",
-				CACertPEM:   bundle.CACertPEM,
-				Accounts:    profileAccounts,
-			})
-			if err != nil {
-				return err
-			}
-
-			if outPath == "" {
-				outPath = filepath.Join(e.cfg.Dir, "ferry.mobileconfig")
-			}
 			if outPath == "-" {
-				_, err := e.out.Write(profile)
+				if len(profiles) != 1 {
+					return fmt.Errorf("writing to stdout needs exactly one account; name one, or drop -o")
+				}
+				_, err := e.out.Write(profiles[0].data)
 				return err
 			}
-			// A profile may carry a password, so it is never world-readable.
-			if err := os.WriteFile(outPath, profile, 0o600); err != nil {
-				return err
+			if outPath != "" && len(profiles) != 1 {
+				return fmt.Errorf("-o names a single file but %d accounts matched; name one account, or drop -o to write one profile per account",
+					len(profiles))
 			}
 
-			e.printf("Wrote %s\n", outPath)
-			for _, a := range profileAccounts {
-				note := ""
-				if a.Password == "" {
-					note = " (Mail will ask for the app password)"
+			for i := range profiles {
+				path := outPath
+				if path == "" {
+					path = filepath.Join(e.cfg.Dir, "ferry-"+profiles[i].account+".mobileconfig")
 				}
-				e.printf("  %s → %s%s\n", a.Name, a.Address, note)
+				// A profile may carry a password, so it is never world-readable.
+				if err := os.WriteFile(path, profiles[i].data, 0o600); err != nil {
+					return err
+				}
+				profiles[i].path = path
 			}
-			e.printf("\nInstall it: open the file, then approve it in\n")
+
+			e.printf("Wrote %d profile(s), one per account:\n\n", len(profiles))
+			for _, pr := range profiles {
+				note := " (the client will ask for the app password)"
+				if pr.hasPass {
+					note = " (password embedded)"
+				}
+				e.printf("  %s\n    %s%s\n", pr.path, pr.address, note)
+			}
+			e.printf("\nInstall each one: open the file, then approve it in\n")
 			e.printf("System Settings → General → Device Management.\n")
+			e.printf("\nEach account is a separate profile, so installing or removing one\n")
+			e.printf("leaves the others alone.\n")
+
 			if runtime.GOOS == "darwin" && open {
-				if err := exec.CommandContext(ctx, "open", outPath).Run(); err != nil {
-					e.printf("\nCould not open it automatically: %v\n", err)
+				for _, pr := range profiles {
+					if err := exec.CommandContext(ctx, "open", pr.path).Run(); err != nil {
+						e.printf("\nCould not open %s automatically: %v\n", pr.path, err)
+					}
 				}
 			}
 			return nil
 		},
 	}
-	cmd.Flags().StringVarP(&outPath, "output", "o", "", "where to write the profile (\"-\" for stdout; default: <data-dir>/ferry.mobileconfig)")
+	cmd.Flags().StringVarP(&outPath, "output", "o", "",
+		"write a single account's profile here (\"-\" for stdout); default: <data-dir>/ferry-<account>.mobileconfig")
 	cmd.Flags().StringVar(&host, "host", "", "hostname Mail should connect to (default: the configured listen address, or localhost)")
 	cmd.Flags().BoolVar(&open, "open", false, "open the profile after writing it")
 	cmd.Flags().StringArrayVar(&withPasswd, "with-password", nil, "embed an app password, as account=password (the file then contains a credential)")

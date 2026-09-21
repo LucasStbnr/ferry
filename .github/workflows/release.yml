@@ -25,6 +25,12 @@ jobs:
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
 
+      # GoReleaser shells out to both of these and the action installs neither:
+      # syft builds the SBOMs, cosign signs the checksums against this job's
+      # OIDC identity. Without them the release fails after building.
+      - uses: anchore/sbom-action/download-syft@v0
+      - uses: sigstore/cosign-installer@v4
+
       - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
@@ -41,6 +47,6 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # A personal access token with contents:write on the tap repository.
-          # Without it the Homebrew formula is built but not published.
+          # A personal access token with contents:write on LucasStbnr/homebrew-tap.
+          # Without it the Homebrew cask is built but not published.
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
